@@ -30,7 +30,9 @@ jobs:
     needs: lint-and-test
     steps:
       - uses: actions/checkout@v4
+
       - name: Build base image
-        run: docker build -f docker/base.Dockerfile -t easm-base:ci .
+        run: docker build -f docker/base.Dockerfile -t easm-base:latest .
+
       - name: Build app image
         run: docker build -f docker/app.Dockerfile -t easm-app:ci .
