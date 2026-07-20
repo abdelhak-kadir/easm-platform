@@ -1,7 +1,8 @@
+import ipaddress
 import os
 import socket
 
-import backend.app.tools.shodan as shodan
+import shodan
 
 
 class ShodanScanError(Exception):
@@ -31,10 +32,13 @@ def run(asset_value: str) -> dict:
 def _resolve_to_ip(hostname: str) -> str:
     try:
         return socket.gethostbyname(hostname)
-    except socket.gaierror as e:
+    except OSError as e:
         raise ShodanScanError(f"Could not resolve '{hostname}' to an IP address") from e
 
 
 def _is_ip(value: str) -> bool:
-    parts = value.split(".")
-    return len(parts) == 4 and all(p.isdigit() for p in parts)
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
