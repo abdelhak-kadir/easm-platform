@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: easm-postgres
+    environment:
+      POSTGRES_USER: easm_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: easm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U easm_user -d easm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: easm-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    container_name: easm-backend
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    container_name: easm-celery-worker
+    command: celery -A app.celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
