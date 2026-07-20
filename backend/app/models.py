@@ -12,20 +12,20 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class AssetType(str, enum.Enum):
+class AssetType(enum.StrEnum):
     DOMAIN = "domain"
     SUBDOMAIN = "subdomain"
     IP = "ip"
 
 
-class ScanStatus(str, enum.Enum):
+class ScanStatus(enum.StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
 
 
-class ToolName(str, enum.Enum):
+class ToolName(enum.StrEnum):
     WHOIS = "whois"
     THEHARVESTER = "theharvester"
     NMAP = "nmap"
@@ -35,7 +35,7 @@ class ToolName(str, enum.Enum):
     HIBP = "hibp"
 
 
-class Severity(str, enum.Enum):
+class Severity(enum.StrEnum):
     INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
