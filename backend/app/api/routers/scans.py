@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession
-from app.models import Asset, ScanJob
+from app.models import Asset, ScanJob, ScanStatus, ToolName
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -12,10 +12,15 @@ def trigger_shodan_scan(asset_id: int, db: DBSession):
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
 
+    job = ScanJob(asset_id=asset.id, tool=ToolName.SHODAN, status=ScanStatus.PENDING)
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
     from app.tasks import run_shodan_scan
 
-    task = run_shodan_scan.delay(asset_id)
-    return {"task_id": task.id, "status": "queued"}
+    task = run_shodan_scan.delay(job.id)
+    return {"task_id": task.id, "job_id": job.id, "status": "queued"}
 
 
 @router.get("/{job_id}")

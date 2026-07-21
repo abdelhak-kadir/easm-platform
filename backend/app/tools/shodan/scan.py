@@ -9,6 +9,14 @@ class ShodanScanError(Exception):
     """Raised when a Shodan lookup can't be completed."""
 
 
+class ShodanRateLimitError(ShodanScanError):
+    """Raised when Shodan's API rate limit is hit — safe to retry."""
+
+
+class ShodanNoDataError(ShodanScanError):
+    """Raised when Shodan has no indexed data for the target — not a failure."""
+
+
 def run(asset_value: str) -> dict:
     """
     Look up an asset (IP, domain, or subdomain) in Shodan.
@@ -26,6 +34,11 @@ def run(asset_value: str) -> dict:
     try:
         return api.host(ip)
     except shodan.APIError as e:
+        message = str(e).lower()
+        if "no information available" in message:
+            raise ShodanNoDataError(f"No Shodan data available for {ip}") from e
+        if "rate limit" in message:
+            raise ShodanRateLimitError(f"Shodan rate limit reached for {ip}: {e}") from e
         raise ShodanScanError(f"Shodan lookup failed for {ip}: {e}") from e
 
 
