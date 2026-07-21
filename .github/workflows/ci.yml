@@ -17,12 +17,16 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements/base.txt
+          pip install -r requirements/tools.txt
           pip install -r requirements/dev.txt
       - name: Lint
         run: ruff check .
       - name: Format check
         run: black --check .
       - name: Test
+        env:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
+          REDIS_URL: "redis://localhost:6379/0"
         run: pytest --cov=backend -v
 
   docker-build:
