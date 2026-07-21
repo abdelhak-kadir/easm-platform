@@ -9,15 +9,56 @@ _CVSS_THRESHOLDS = (
     (0.0, Severity.LOW),
 )
 
+# Fields normalized here use the same keys other tools (Whois, Censys, Nmap)
+# will use for their own host_info findings, so reports can query
+# finding_type == "host_info" across tools without caring which one wrote it.
+_HOST_INFO_FIELDS = {
+    "org": "org",
+    "isp": "isp",
+    "asn": "asn",
+    "country_name": "country",
+    "city": "city",
+    "os": "os",
+}
+
 
 def parse(raw_data: dict) -> list[dict]:
     """Turn a raw Shodan host response into a list of Finding-ready dicts."""
-    findings = [_parse_open_port(service) for service in raw_data.get("data", [])]
+    findings = []
+
+    host_info = _parse_host_info(raw_data)
+    if host_info is not None:
+        findings.append(host_info)
+
+    findings.extend(_parse_open_port(service) for service in raw_data.get("data", []))
 
     for cve_id, vuln_info in raw_data.get("vulns", {}).items():
         findings.append(_parse_vulnerability(cve_id, vuln_info))
 
     return findings
+
+
+def _parse_host_info(raw_data: dict) -> dict | None:
+    data = {
+        normalized_key: raw_data[shodan_key]
+        for shodan_key, normalized_key in _HOST_INFO_FIELDS.items()
+        if raw_data.get(shodan_key)
+    }
+
+    hostnames = raw_data.get("hostnames") or []
+    if hostnames:
+        data["hostnames"] = hostnames
+
+    if not data:
+        return None
+
+    org = data.get("org", "Unknown")
+    return {
+        "finding_type": "host_info",
+        "title": f"Host info: {org}",
+        "severity": Severity.INFO,
+        "data": data,
+    }
 
 
 def _parse_open_port(service: dict) -> dict:
