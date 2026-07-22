@@ -9,26 +9,13 @@ _CVSS_THRESHOLDS = (
     (0.0, Severity.LOW),
 )
 
-# Fields normalized here use the same keys other tools (Whois, Censys, Nmap)
-# will use for their own host_info findings, so reports can query
-# finding_type == "host_info" across tools without caring which one wrote it.
-_HOST_INFO_FIELDS = {
-    "org": "org",
-    "isp": "isp",
-    "asn": "asn",
-    "country_name": "country",
-    "city": "city",
-    "os": "os",
-}
-
 
 def parse(raw_data: dict) -> list[dict]:
     """Turn a raw Shodan host response into a list of Finding-ready dicts."""
     findings = []
 
-    host_info = _parse_host_info(raw_data)
-    if host_info is not None:
-        findings.append(host_info)
+    if raw_data.get("ip_str"):
+        findings.append(_parse_host_info(raw_data))
 
     findings.extend(_parse_open_port(service) for service in raw_data.get("data", []))
 
@@ -38,26 +25,38 @@ def parse(raw_data: dict) -> list[dict]:
     return findings
 
 
-def _parse_host_info(raw_data: dict) -> dict | None:
-    data = {
-        normalized_key: raw_data[shodan_key]
-        for shodan_key, normalized_key in _HOST_INFO_FIELDS.items()
-        if raw_data.get(shodan_key)
-    }
+def _parse_host_info(raw_data: dict) -> dict:
+    """Everything Shodan knows about the host itself, as a single finding.
 
-    hostnames = raw_data.get("hostnames") or []
-    if hostnames:
-        data["hostnames"] = hostnames
-
-    if not data:
-        return None
-
-    org = data.get("org", "Unknown")
+    Kept under one generic finding_type ("host_info") rather than a
+    Shodan-specific shape, so a results viewer can render it without
+    knowing which tool produced it -- other tools (whois, censys) can
+    emit the same finding_type later with whatever subset of fields
+    they have.
+    """
+    ip = raw_data.get("ip_str")
     return {
         "finding_type": "host_info",
-        "title": f"Host info: {org}",
+        "title": f"Host information for {ip}",
         "severity": Severity.INFO,
-        "data": data,
+        "data": {
+            "ip": ip,
+            "org": raw_data.get("org"),
+            "isp": raw_data.get("isp"),
+            "asn": raw_data.get("asn"),
+            "hostnames": raw_data.get("hostnames", []),
+            "domains": raw_data.get("domains", []),
+            "country_name": raw_data.get("country_name"),
+            "country_code": raw_data.get("country_code"),
+            "city": raw_data.get("city"),
+            "region_code": raw_data.get("region_code"),
+            "latitude": raw_data.get("latitude"),
+            "longitude": raw_data.get("longitude"),
+            "os": raw_data.get("os"),
+            "tags": raw_data.get("tags", []),
+            "ports": raw_data.get("ports", []),
+            "last_update": raw_data.get("last_update"),
+        },
     }
 
 

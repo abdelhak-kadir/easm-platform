@@ -3,13 +3,21 @@ from app.tools.shodan.parse import parse
 
 SAMPLE_SHODAN_RESPONSE = {
     "ip_str": "93.184.216.34",
-    "org": "Example Org",
-    "isp": "Example ISP",
-    "asn": "AS12345",
+    "org": "Edgecast Inc.",
+    "isp": "Edgecast Inc.",
+    "asn": "AS15133",
+    "hostnames": ["example.com", "www.example.com"],
+    "domains": ["example.com"],
     "country_name": "United States",
+    "country_code": "US",
     "city": "Los Angeles",
+    "region_code": "CA",
+    "latitude": 34.0544,
+    "longitude": -118.2441,
     "os": None,
-    "hostnames": ["example.com"],
+    "tags": ["cdn"],
+    "ports": [22, 80, 443],
+    "last_update": "2026-07-15T09:12:33.123456",
     "data": [
         {
             "port": 80,
@@ -51,32 +59,24 @@ def test_parse_returns_one_host_info_finding():
     assert len(host_info_findings) == 1
 
 
-def test_host_info_finding_has_normalized_fields():
+def test_host_info_finding_has_expected_fields():
     findings = parse(SAMPLE_SHODAN_RESPONSE)
     host_info = next(f for f in findings if f["finding_type"] == "host_info")
 
-    assert host_info["title"] == "Host info: Example Org"
+    assert host_info["title"] == "Host information for 93.184.216.34"
     assert host_info["severity"] == Severity.INFO
-    assert host_info["data"]["org"] == "Example Org"
-    assert host_info["data"]["isp"] == "Example ISP"
-    assert host_info["data"]["asn"] == "AS12345"
-    assert host_info["data"]["country"] == "United States"
-    assert host_info["data"]["city"] == "Los Angeles"
-    assert host_info["data"]["hostnames"] == ["example.com"]
-    # os was None in the sample, so it should be omitted rather than stored as null
-    assert "os" not in host_info["data"]
-
-
-def test_host_info_omitted_when_no_descriptive_fields_present():
-    minimal = {"ip_str": "1.2.3.4", "data": []}
-    findings = parse(minimal)
-    host_info_findings = [f for f in findings if f["finding_type"] == "host_info"]
-    assert host_info_findings == []
+    assert host_info["data"]["org"] == "Edgecast Inc."
+    assert host_info["data"]["asn"] == "AS15133"
+    assert host_info["data"]["hostnames"] == ["example.com", "www.example.com"]
+    assert host_info["data"]["country_name"] == "United States"
+    assert host_info["data"]["tags"] == ["cdn"]
 
 
 def test_open_port_finding_has_expected_fields():
     findings = parse(SAMPLE_SHODAN_RESPONSE)
-    http_finding = next(f for f in findings if f["data"].get("port") == 80)
+    http_finding = next(
+        f for f in findings if f["finding_type"] == "open_port" and f["data"]["port"] == 80
+    )
 
     assert http_finding["title"] == "Open port 80/tcp (nginx)"
     assert http_finding["severity"] == Severity.INFO
@@ -96,13 +96,18 @@ def test_medium_cvss_maps_to_medium_severity():
     assert finding["severity"] == Severity.MEDIUM
 
 
-def test_parse_handles_no_open_ports_or_vulns():
-    assert parse({"ip_str": "1.2.3.4"}) == []
+def test_parse_handles_empty_response():
+    assert parse({}) == []
+
+
+def test_parse_without_ip_str_skips_host_info():
+    minimal = {"data": [{"port": 443, "transport": "tcp"}]}
+    findings = parse(minimal)
+    assert all(f["finding_type"] != "host_info" for f in findings)
 
 
 def test_parse_handles_missing_optional_fields():
     minimal = {"data": [{"port": 443, "transport": "tcp"}]}
     findings = parse(minimal)
-    port_finding = next(f for f in findings if f["finding_type"] == "open_port")
-    assert port_finding["title"] == "Open port 443/tcp"
-    assert port_finding["data"]["product"] == ""
+    assert findings[0]["title"] == "Open port 443/tcp"
+    assert findings[0]["data"]["product"] == ""
