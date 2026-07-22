@@ -3,6 +3,13 @@ from app.tools.shodan.parse import parse
 
 SAMPLE_SHODAN_RESPONSE = {
     "ip_str": "93.184.216.34",
+    "org": "Example Org",
+    "isp": "Example ISP",
+    "asn": "AS12345",
+    "country_name": "United States",
+    "city": "Los Angeles",
+    "os": None,
+    "hostnames": ["example.com"],
     "data": [
         {
             "port": 80,
@@ -38,9 +45,38 @@ def test_parse_returns_finding_per_vulnerability():
     assert len(vuln_findings) == 2
 
 
+def test_parse_returns_one_host_info_finding():
+    findings = parse(SAMPLE_SHODAN_RESPONSE)
+    host_info_findings = [f for f in findings if f["finding_type"] == "host_info"]
+    assert len(host_info_findings) == 1
+
+
+def test_host_info_finding_has_normalized_fields():
+    findings = parse(SAMPLE_SHODAN_RESPONSE)
+    host_info = next(f for f in findings if f["finding_type"] == "host_info")
+
+    assert host_info["title"] == "Host info: Example Org"
+    assert host_info["severity"] == Severity.INFO
+    assert host_info["data"]["org"] == "Example Org"
+    assert host_info["data"]["isp"] == "Example ISP"
+    assert host_info["data"]["asn"] == "AS12345"
+    assert host_info["data"]["country"] == "United States"
+    assert host_info["data"]["city"] == "Los Angeles"
+    assert host_info["data"]["hostnames"] == ["example.com"]
+    # os was None in the sample, so it should be omitted rather than stored as null
+    assert "os" not in host_info["data"]
+
+
+def test_host_info_omitted_when_no_descriptive_fields_present():
+    minimal = {"ip_str": "1.2.3.4", "data": []}
+    findings = parse(minimal)
+    host_info_findings = [f for f in findings if f["finding_type"] == "host_info"]
+    assert host_info_findings == []
+
+
 def test_open_port_finding_has_expected_fields():
     findings = parse(SAMPLE_SHODAN_RESPONSE)
-    http_finding = next(f for f in findings if f["data"]["port"] == 80)
+    http_finding = next(f for f in findings if f["data"].get("port") == 80)
 
     assert http_finding["title"] == "Open port 80/tcp (nginx)"
     assert http_finding["severity"] == Severity.INFO
@@ -67,5 +103,6 @@ def test_parse_handles_no_open_ports_or_vulns():
 def test_parse_handles_missing_optional_fields():
     minimal = {"data": [{"port": 443, "transport": "tcp"}]}
     findings = parse(minimal)
-    assert findings[0]["title"] == "Open port 443/tcp"
-    assert findings[0]["data"]["product"] == ""
+    port_finding = next(f for f in findings if f["finding_type"] == "open_port")
+    assert port_finding["title"] == "Open port 443/tcp"
+    assert port_finding["data"]["product"] == ""

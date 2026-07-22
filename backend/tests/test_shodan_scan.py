@@ -2,7 +2,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import shodan
-from app.tools.shodan.scan import ShodanScanError, run
+from app.tools.shodan.scan import (
+    ShodanNoDataError,
+    ShodanRateLimitError,
+    ShodanScanError,
+    run,
+)
 
 
 @patch("app.tools.shodan.scan.shodan.Shodan")
@@ -47,10 +52,32 @@ def test_run_raises_on_unresolvable_domain(mock_resolve):
 
 @patch("app.tools.shodan.scan.shodan.Shodan")
 @patch.dict("os.environ", {"SHODAN_API_KEY": "fake-key"})
-def test_run_raises_on_shodan_api_error(mock_shodan_cls):
+def test_run_raises_generic_error_on_other_api_error(mock_shodan_cls):
     mock_api = MagicMock()
-    mock_api.host.side_effect = shodan.APIError("no information available")
+    mock_api.host.side_effect = shodan.APIError("something else went wrong")
     mock_shodan_cls.return_value = mock_api
 
     with pytest.raises(ShodanScanError, match="Shodan lookup failed"):
+        run("1.2.3.4")
+
+
+@patch("app.tools.shodan.scan.shodan.Shodan")
+@patch.dict("os.environ", {"SHODAN_API_KEY": "fake-key"})
+def test_run_raises_no_data_error_when_shodan_has_nothing(mock_shodan_cls):
+    mock_api = MagicMock()
+    mock_api.host.side_effect = shodan.APIError("No information available")
+    mock_shodan_cls.return_value = mock_api
+
+    with pytest.raises(ShodanNoDataError, match="No Shodan data available"):
+        run("1.2.3.4")
+
+
+@patch("app.tools.shodan.scan.shodan.Shodan")
+@patch.dict("os.environ", {"SHODAN_API_KEY": "fake-key"})
+def test_run_raises_rate_limit_error_when_shodan_throttles(mock_shodan_cls):
+    mock_api = MagicMock()
+    mock_api.host.side_effect = shodan.APIError("Rate limit reached")
+    mock_shodan_cls.return_value = mock_api
+
+    with pytest.raises(ShodanRateLimitError, match="rate limit reached"):
         run("1.2.3.4")
