@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession
-from app.models import Asset, ScanJob, ScanStatus, ToolName
+from app.models import Asset, ScanJob, ScanResult, ScanStatus, ToolName
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -35,4 +35,36 @@ def get_scan_job(job_id: int, db: DBSession):
         "started_at": job.started_at,
         "completed_at": job.completed_at,
         "error_message": job.error_message,
+    }
+
+
+@router.get("/{job_id}/results")
+def get_scan_results(job_id: int, db: DBSession):
+    job = db.get(ScanJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+
+    result = (
+        db.query(ScanResult)
+        .filter(ScanResult.scan_job_id == job_id)
+        .order_by(ScanResult.version.desc())
+        .first()
+    )
+    if result is None:
+        return {"job_id": job_id, "status": job.status, "version": None, "findings": []}
+
+    return {
+        "job_id": job_id,
+        "status": job.status,
+        "version": result.version,
+        "findings": [
+            {
+                "id": f.id,
+                "finding_type": f.finding_type,
+                "title": f.title,
+                "severity": f.severity,
+                "data": f.data,
+            }
+            for f in result.findings
+        ],
     }
