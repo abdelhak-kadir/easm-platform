@@ -2,25 +2,69 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession
 from app.models import Asset, ScanJob, ScanResult, ScanStatus, ToolName
+from app.tools.registry import get_tool_spec, tools_for_asset_type
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 
-@router.post("/shodan/{asset_id}")
-def trigger_shodan_scan(asset_id: int, db: DBSession):
+@router.post("/discover/{asset_id}")
+def trigger_discovery(asset_id: int, db: DBSession):
+    """Queue every tool registered for this asset's type.
+
+    This is the "Ordonnanceur dynamique" / "Sélection des outils selon
+    le type d'actif" entry point from the discovery flow -- the caller
+    doesn't pick a tool, the registry does, based on asset.asset_type.
+
+    NOTE: must stay registered before `/{tool}/{asset_id}` below. Both
+    are POST routes with a literal-or-variable first segment plus
+    `asset_id`, so route registration order decides whether "discover"
+    resolves here or gets validated (and rejected) as a ToolName.
+    """
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    job = ScanJob(asset_id=asset.id, tool=ToolName.SHODAN, status=ScanStatus.PENDING)
+    specs = tools_for_asset_type(asset.asset_type)
+    if not specs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No tools registered for asset type '{asset.asset_type}'",
+        )
+
+    from app.tasks import run_tool_scan
+
+    queued = []
+    for spec in specs:
+        job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        task = run_tool_scan.delay(job.id)
+        queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
+
+    return {"asset_id": asset.id, "queued": queued}
+
+
+@router.post("/{tool}/{asset_id}")
+def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    try:
+        get_tool_spec(tool)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    job = ScanJob(asset_id=asset.id, tool=tool, status=ScanStatus.PENDING)
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    from app.tasks import run_shodan_scan
+    from app.tasks import run_tool_scan
 
-    task = run_shodan_scan.delay(job.id)
-    return {"task_id": task.id, "job_id": job.id, "status": "queued"}
+    task = run_tool_scan.delay(job.id)
+    return {"task_id": task.id, "job_id": job.id, "status": "queued", "tool": tool}
 
 
 @router.get("/{job_id}")

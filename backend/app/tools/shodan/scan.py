@@ -4,16 +4,18 @@ import socket
 
 import shodan
 
+from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
 
-class ShodanScanError(Exception):
+
+class ShodanScanError(ToolScanError):
     """Raised when a Shodan lookup can't be completed."""
 
 
-class ShodanRateLimitError(ShodanScanError):
+class ShodanRateLimitError(ShodanScanError, ToolRateLimitError):
     """Raised when Shodan's API rate limit is hit — safe to retry."""
 
 
-class ShodanNoDataError(ShodanScanError):
+class ShodanNoDataError(ShodanScanError, ToolNoDataError):
     """Raised when Shodan has no indexed data for the target — not a failure."""
 
 
