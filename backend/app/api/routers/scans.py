@@ -68,3 +68,27 @@ def get_scan_results(job_id: int, db: DBSession):
             for f in result.findings
         ],
     }
+
+
+@router.get("/asset/{asset_id}")
+def list_scans_for_asset(asset_id: int, db: DBSession):
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    jobs = (
+        db.query(ScanJob)
+        .filter(ScanJob.asset_id == asset_id)
+        .order_by(ScanJob.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": j.id,
+            "tool": j.tool,
+            "status": j.status,
+            "created_at": j.created_at,
+            "completed_at": j.completed_at,
+        }
+        for j in jobs
+    ]

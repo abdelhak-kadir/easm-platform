@@ -1,26 +1,117 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #0b0f14;
+  --panel: #12171f;
+  --panel-alt: #171d26;
+  --hairline: #232b36;
+  --text: #dce1e8;
+  --muted: #7c8896;
+  --signal: #56c2c0;
+  --signal-dim: #1f3d3c;
+  --radius: 3px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  border-color: var(--hairline);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html,
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--signal-dim);
+  color: var(--text);
+}
+
+input:focus {
+  outline: none;
+}
+
+@layer components {
+  .mono {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+  }
+  .eyebrow {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    @apply text-[10px] uppercase tracking-[0.14em];
+    color: var(--muted);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+  }
+  .btn-primary {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    @apply text-xs uppercase tracking-wider px-4 py-2 transition-colors;
+    background: var(--signal);
+    color: var(--ink);
+    border-radius: var(--radius);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #74d1cf;
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-ghost {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    @apply text-xs uppercase tracking-wider px-3 py-2 transition-colors;
+    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    border-radius: var(--radius);
+  }
+  .btn-ghost:hover {
+    border-color: var(--signal);
+    color: var(--signal);
+  }
+  .field-input {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    @apply text-sm px-3 py-2 w-full transition-colors;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    border-radius: var(--radius);
+  }
+  .field-input:focus {
+    border-color: var(--signal);
+  }
+  .field-input::placeholder {
+    color: var(--muted);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+.scan-sweep {
+  position: relative;
+  overflow: hidden;
+}
+.scan-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--signal-dim), transparent);
+  animation: sweep 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-sweep::after {
+    animation: none;
+    display: none;
+  }
 }
