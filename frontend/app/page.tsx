@@ -24,6 +24,9 @@ export default function Home() {
   const [activeType, setActiveType] = useState<string | null>(null);
 
   const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
+  const runningTools = assetJobs
+  .filter((j) => ACTIVE_STATUSES.has(j.status))
+  .map((j) => j.tool);
 
   function selectAsset(a: Asset) {
     setAsset(a);
@@ -120,7 +123,7 @@ export default function Home() {
       <div className="flex items-center gap-2 mb-1">
         <span className="w-2 h-2 rounded-full" style={{ background: "var(--signal)" }} />
         <h1 className="mono text-sm uppercase tracking-[0.14em]" style={{ color: "var(--text)" }}>
-          EASM // ATTACK SURFACE SCANNER
+          EASM ATTACK SURFACE SCANNER
         </h1>
       </div>
       <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
@@ -131,15 +134,20 @@ export default function Home() {
 
       {asset && (
         <>
-          <div className={`panel flex items-center justify-between px-4 py-3 mb-4 ${scanning ? "scan-sweep" : ""}`}>
-            <div>
-              <div className="eyebrow">ACTIVE TARGET</div>
-              <p className="mono text-base mt-0.5">{asset.value}</p>
-            </div>
-            <button onClick={triggerScan} disabled={scanning} className="btn-primary">
-              {scanning ? "scanning…" : "run scan"}
-            </button>
-          </div>
+         <div className={`panel flex items-center justify-between px-4 py-3 mb-4 ${scanning ? "scan-sweep" : ""}`}>
+  <div>
+    <div className="eyebrow">ACTIVE TARGET</div>
+    <p className="mono text-base mt-0.5">{asset.value}</p>
+    {runningTools.length > 0 && (
+      <p className="mono text-xs mt-1" style={{ color: "var(--signal)" }}>
+        running: {runningTools.join(", ")}
+      </p>
+    )}
+  </div>
+  <button onClick={triggerScan} disabled={scanning} className="btn-primary">
+    {scanning ? "scanning…" : "run scan"}
+  </button>
+</div>
 
           <ScanHistory
             apiBase={API_BASE}
