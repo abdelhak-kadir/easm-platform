@@ -102,16 +102,92 @@ function VulnerabilityBody({ data }: BodyProps) {
   );
 }
 
+function DomainRegistrationBody({ data }: BodyProps) {
+  return (
+    <div className="space-y-1.5">
+      <Field label="domain">
+        {data.domain}
+        {data.domain && <CopyButton value={data.domain} />}
+      </Field>
+      <Field label="registrar">{data.registrar || "unknown"}</Field>
+      {data.creation_date && <Field label="created">{data.creation_date}</Field>}
+      {data.expiration_date && <Field label="expires">{data.expiration_date}</Field>}
+      {data.org && <Field label="org">{data.org}</Field>}
+      {data.country && <Field label="country">{data.country}</Field>}
+      {data.name_servers?.length > 0 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            name servers
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {data.name_servers.map((ns: string) => (
+              <span
+                key={ns}
+                className="mono text-xs px-2 py-0.5"
+                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
+              >
+                {ns}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {data.status?.length > 0 && <Field label="status">{data.status.join(", ")}</Field>}
+      {data.emails?.length > 0 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            emails
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {data.emails.map((e: string) => (
+              <span
+                key={e}
+                className="mono text-xs px-2 py-0.5 flex items-center gap-1"
+                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
+              >
+                {e}
+                <CopyButton value={e} />
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DomainExpiryBody({ data }: BodyProps) {
+  const expired = data.days_remaining < 0;
+  const color = expired ? "#E0525C" : "#D9BB4C";
+  return (
+    <div className="space-y-1.5">
+      <Field label="expiration">{data.expiration_date}</Field>
+      <Field label="days remaining">
+        <strong style={{ color }}>{data.days_remaining}</strong>
+      </Field>
+    </div>
+  );
+}
+
+// Add one entry per finding_type here to get a pretty rendering.
+// Anything not registered falls back to raw JSON automatically (see
+// the `Body ? <Body /> : <pre>...` below) -- so a brand new backend
+// tool works immediately with zero frontend changes required. Adding
+// a renderer here is purely cosmetic polish, never a blocker.
 const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
   host_info: HostInfoBody,
   open_port: OpenPortBody,
   vulnerability: VulnerabilityBody,
+  domain_registration: DomainRegistrationBody,
+  domain_expiry: DomainExpiryBody,
 };
 
 const TYPE_TAGS: Record<string, string> = {
   host_info: "HOST",
   open_port: "PORT",
   vulnerability: "VULN",
+  domain_registration: "DOMAIN",
+  domain_expiry: "EXPIRY",
 };
 
 export default function FindingCard({ finding }: { finding: Finding }) {

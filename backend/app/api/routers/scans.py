@@ -67,19 +67,33 @@ def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
     return {"task_id": task.id, "job_id": job.id, "status": "queued", "tool": tool}
 
 
+def _serialize_job(db: DBSession, job: ScanJob) -> dict:
+    """Shared shape for a job, including its chained-scan info if any
+    (see ToolSpec.spawns / app.tasks._spawn_chained_scan)."""
+    spawned_job = db.get(ScanJob, job.spawned_job_id) if job.spawned_job_id else None
+    spawned_asset = db.get(Asset, job.spawned_asset_id) if job.spawned_asset_id else None
+    return {
+        "id": job.id,
+        "tool": job.tool,
+        "status": job.status,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
+        "error_message": job.error_message,
+        "spawned_asset_id": job.spawned_asset_id,
+        "spawned_asset_value": spawned_asset.value if spawned_asset else None,
+        "spawned_job_id": job.spawned_job_id,
+        "spawned_job_tool": spawned_job.tool if spawned_job else None,
+        "spawned_job_status": spawned_job.status if spawned_job else None,
+    }
+
+
 @router.get("/{job_id}")
 def get_scan_job(job_id: int, db: DBSession):
     job = db.get(ScanJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Scan job not found")
-    return {
-        "id": job.id,
-        "status": job.status,
-        "tool": job.tool,
-        "started_at": job.started_at,
-        "completed_at": job.completed_at,
-        "error_message": job.error_message,
-    }
+    return _serialize_job(db, job)
 
 
 @router.get("/{job_id}/results")
@@ -126,13 +140,4 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
         .order_by(ScanJob.created_at.desc())
         .all()
     )
-    return [
-        {
-            "id": j.id,
-            "tool": j.tool,
-            "status": j.status,
-            "created_at": j.created_at,
-            "completed_at": j.completed_at,
-        }
-        for j in jobs
-    ]
+    return [_serialize_job(db, j) for j in jobs]

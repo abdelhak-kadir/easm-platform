@@ -70,6 +70,9 @@ class ScanJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    spawned_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True)
+    spawned_job_id: Mapped[int | None] = mapped_column(ForeignKey("scan_jobs.id"), nullable=True)
+
     asset: Mapped["Asset"] = relationship(back_populates="scan_jobs")
     results: Mapped[list["ScanResult"]] = relationship(back_populates="scan_job")
 

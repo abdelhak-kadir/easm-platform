@@ -8,8 +8,15 @@ queue next.
 
 Adding a new tool means adding one entry here (plus its own
 scan.py/parse.py) -- app/tasks.py and the routers never change.
+
+A ToolSpec can also declare that it *spawns* another tool once it
+completes -- e.g. WHOIS resolves the domain to an IP and spawns a
+Shodan scan on that IP. This is opt-in per tool (`spawns` is None by
+default) and handled generically in app/tasks.py, so most tools never
+need to think about it.
 """
 
+import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -27,6 +34,24 @@ class ToolSpec:
     parse: Callable[[dict], list[dict]]
     asset_types: frozenset[AssetType]
 
+    # Chaining (all optional -- a tool that doesn't chain leaves these None):
+    spawns: ToolName | None = None
+    spawn_asset_type: AssetType | None = None
+    resolve_spawn_value: Callable[[str], str | None] | None = None
+
+
+def _resolve_domain_to_ip(domain: str) -> str | None:
+    """Best-effort DNS A-record lookup used to chain WHOIS -> Shodan.
+
+    Returns None (rather than raising) on failure -- a domain with no
+    A record, or a transient DNS error, just means nothing gets
+    spawned. It must never fail the WHOIS job that already completed.
+    """
+    try:
+        return socket.gethostbyname(domain.strip())
+    except OSError:
+        return None
+
 
 TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
     ToolName.SHODAN: ToolSpec(
@@ -40,6 +65,9 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=whois_scan.run,
         parse=whois_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        spawns=ToolName.SHODAN,
+        spawn_asset_type=AssetType.IP,
+        resolve_spawn_value=_resolve_domain_to_ip,
     ),
 }
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DBSession
 from app.api.schemas import AssetCreate
@@ -27,3 +27,11 @@ def create_asset(payload: AssetCreate, db: DBSession):
 @router.get("")
 def list_assets(db: DBSession):
     return db.query(Asset).all()
+
+
+@router.get("/{asset_id}")
+def get_asset(asset_id: int, db: DBSession):
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return {"id": asset.id, "value": asset.value, "asset_type": asset.asset_type}

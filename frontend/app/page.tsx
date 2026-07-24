@@ -10,23 +10,37 @@ import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
+const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 export default function Home() {
   const [asset, setAsset] = useState<Asset | null>(null);
   const [job, setJob] = useState<ScanJob | null>(null);
   const [results, setResults] = useState<ScanResults | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const [scanning, setScanning] = useState(false);
+  const [assetJobs, setAssetJobs] = useState<ScanJob[]>([]);
 
   const [search, setSearch] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set(ALL_SEVERITIES));
   const [activeType, setActiveType] = useState<string | null>(null);
 
+  const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
+
   function selectAsset(a: Asset) {
     setAsset(a);
     setJob(null);
     setResults(null);
+    setAssetJobs([]);
     resetFilters();
+  }
+
+  // Jump to a spawned asset (e.g. the IP a WHOIS job resolved and
+  // queued Shodan for). Fetches the asset by id since it may not be
+  // in AssetSearch's already-loaded list.
+  async function jumpToAsset(assetId: number) {
+    const res = await fetch(`${API_BASE}/assets/${assetId}`);
+    if (!res.ok) return;
+    const data: Asset = await res.json();
+    selectAsset(data);
   }
 
   function resetFilters() {
@@ -45,12 +59,11 @@ export default function Home() {
 
   async function triggerScan() {
     if (!asset) return;
-    setScanning(true);
-    const res = await fetch(`${API_BASE}/scans/shodan/${asset.id}`, { method: "POST" });
-    const data = await res.json();
-    setJob({ id: data.job_id, status: "queued", tool: "shodan" });
+    await fetch(`${API_BASE}/scans/discover/${asset.id}`, { method: "POST" });
+    setJob(null);
     setResults(null);
     resetFilters();
+    setHistoryRefresh((k) => k + 1);
   }
 
   async function loadResults(jobId: number) {
@@ -67,24 +80,22 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!job || ["completed", "failed"].includes(job.status)) {
-      setScanning(false);
-      return;
-    }
-    const interval = setInterval(async () => {
-      const res = await fetch(`${API_BASE}/scans/${job.id}`);
-      const data = await res.json();
-      setJob(data);
-      if (data.status === "completed") {
-        await loadResults(job.id);
-        setHistoryRefresh((k) => k + 1);
-        setScanning(false);
-      } else if (data.status === "failed") {
-        setScanning(false);
-      }
+    if (!asset || !scanning) return;
+    const interval = setInterval(() => {
+      setHistoryRefresh((k) => k + 1);
     }, 2000);
     return () => clearInterval(interval);
-  }, [job]);
+  }, [asset, scanning]);
+
+  useEffect(() => {
+    if (!job) return;
+    const latest = assetJobs.find((j) => j.id === job.id);
+    if (latest && latest.status !== job.status) {
+      setJob(latest);
+      if (latest.status === "completed") loadResults(latest.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetJobs]);
 
   const typeOptions = useMemo(
     () => [...new Set((results?.findings || []).map((f) => f.finding_type))],
@@ -113,7 +124,7 @@ export default function Home() {
         </h1>
       </div>
       <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
-        Shodan reconnaissance module
+        Attack surface reconnaissance
       </p>
 
       <AssetSearch apiBase={API_BASE} onSelect={selectAsset} />
@@ -136,6 +147,8 @@ export default function Home() {
             onSelectJob={selectPastJob}
             refreshKey={historyRefresh}
             activeJobId={job?.id}
+            onJobsLoaded={setAssetJobs}
+            onJumpToAsset={jumpToAsset}
           />
         </>
       )}

@@ -12,6 +12,11 @@ export interface ScanJob {
   status: string;
   created_at?: string;
   completed_at?: string;
+  spawned_asset_id?: number | null;
+  spawned_asset_value?: string | null;
+  spawned_job_id?: number | null;
+  spawned_job_tool?: string | null;
+  spawned_job_status?: string | null;
 }
 
 export interface Finding {
