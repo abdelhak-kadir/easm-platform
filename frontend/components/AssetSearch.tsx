@@ -1,6 +1,22 @@
 import { useState, useEffect, useMemo } from "react";
 import { Asset } from "../types/scan";
 
+// Very small heuristic: valid IPv4 dotted-quad, or IPv6 containing a colon.
+// Anything else (has a dot but isn't numeric, or no dot at all but looks
+// hostname-like) is treated as a domain. This only needs to disambiguate
+// what the backend's tool registry cares about (AssetType.IP vs DOMAIN),
+// so it doesn't need to be a full RFC-grade validator.
+function inferAssetType(value: string): "ip" | "domain" {
+  const v = value.trim();
+  const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (IPV4_RE.test(v)) {
+    const octets = v.split(".").map(Number);
+    if (octets.every((o) => o >= 0 && o <= 255)) return "ip";
+  }
+  if (v.includes(":")) return "ip"; // crude IPv6 check
+  return "domain";
+}
+
 export default function AssetSearch({
   apiBase,
   onSelect,
@@ -29,10 +45,11 @@ export default function AssetSearch({
     if (!newValue.trim()) return;
     setCreating(true);
     try {
+      const value = newValue.trim();
       const res = await fetch(`${apiBase}/assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: newValue.trim(), asset_type: "ip" }),
+        body: JSON.stringify({ value, asset_type: inferAssetType(value) }),
       });
       const data: Asset = await res.json();
       setAssets((prev) => (prev.some((a) => a.id === data.id) ? prev : [...prev, data]));
