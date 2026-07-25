@@ -13,10 +13,11 @@ export default function CopyButton({ value }: { value: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="mono text-[10px] tracking-wider px-1.5 py-0.5 border transition-colors"
+      className="mono text-[10px] tracking-wider px-1.5 py-0.5 rounded border transition-colors"
       style={{
-        borderColor: copied ? "var(--signal)" : "var(--hairline)",
-        color: copied ? "var(--signal)" : "var(--muted)",
+        borderColor: copied ? "var(--success)" : "var(--hairline)",
+        color: copied ? "var(--success)" : "var(--muted)",
+        background: copied ? "var(--success-dim)" : "var(--panel)",
       }}
       title={`copy "${value}"`}
     >

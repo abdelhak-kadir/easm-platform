@@ -15,20 +15,20 @@ export default function StatsSummary({ findings }: StatsSummaryProps) {
   const criticalOrHigh = (bySeverity.critical || 0) + (bySeverity.high || 0);
 
   const cols = [
-    { label: "NEEDS ATTENTION", value: criticalOrHigh, tone: criticalOrHigh > 0 ? "#E0525C" : "var(--text)" },
-    { label: "OPEN PORTS", value: openPorts, tone: "var(--text)" },
-    { label: "VULNERABILITIES", value: vulns, tone: vulns > 0 ? "#E08A4B" : "var(--text)" },
-    { label: "TOTAL FINDINGS", value: findings.length, tone: "var(--text)" },
+    { label: "Needs attention", value: criticalOrHigh, tone: criticalOrHigh > 0 ? "var(--danger)" : "var(--text)" },
+    { label: "Open ports", value: openPorts, tone: "var(--text)" },
+    { label: "Vulnerabilities", value: vulns, tone: vulns > 0 ? "var(--warning)" : "var(--text)" },
+    { label: "Total findings", value: findings.length, tone: "var(--text)" },
   ];
 
   return (
-    <div className="panel flex mb-6 divide-x" style={{ borderColor: "var(--hairline)" }}>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       {cols.map((c) => (
-        <div key={c.label} className="flex-1 px-4 py-3" style={{ borderColor: "var(--hairline)" }}>
-          <div className="mono text-2xl tabular-nums" style={{ color: c.tone }}>
+        <div key={c.label} className="panel card-pad">
+          <p className="text-3xl font-bold tabular-nums" style={{ color: c.tone }}>
             {c.value}
-          </div>
-          <div className="eyebrow mt-1">{c.label}</div>
+          </p>
+          <p className="eyebrow mt-1.5">{c.label}</p>
         </div>
       ))}
     </div>

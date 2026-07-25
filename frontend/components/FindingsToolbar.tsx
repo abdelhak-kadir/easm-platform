@@ -29,19 +29,19 @@ export default function FindingsToolbar({
   return (
     <div className="mb-5 space-y-3">
       <div className="relative">
-        <span className="mono absolute left-3 top-1/2 -translate-y-1/2 text-sm" style={{ color: "var(--muted)" }}>
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: "var(--faint)" }}>
           ⌕
         </span>
         <input
-          className="field-input pl-8"
-          placeholder="search title, port, cve, hostname…"
+          className="field-input pl-9"
+          placeholder="Search title, port, CVE, hostname…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="eyebrow mr-1">SEVERITY</span>
+        <span className="eyebrow mr-1">Severity</span>
         {SEVERITY_ORDER.map((sev) => {
           const active = activeSeverities.has(sev);
           const color = SEVERITY_HEX[sev];
@@ -49,11 +49,11 @@ export default function FindingsToolbar({
             <button
               key={sev}
               onClick={() => onToggleSeverity(sev)}
-              className="mono text-[10px] uppercase tracking-wider px-2 py-1 border transition-colors"
+              className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
               style={{
-                borderColor: active ? color : "var(--hairline)",
+                border: `1px solid ${active ? color : "var(--hairline)"}`,
                 color: active ? color : "var(--muted)",
-                background: active ? `${color}14` : "transparent",
+                background: active ? `${color}14` : "var(--panel)",
               }}
             >
               {sev}
@@ -64,25 +64,27 @@ export default function FindingsToolbar({
 
       {typeOptions.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="eyebrow mr-1">TYPE</span>
+          <span className="eyebrow mr-1">Type</span>
           <button
             onClick={() => onTypeChange(null)}
-            className="mono text-[10px] uppercase tracking-wider px-2 py-1 border transition-colors"
+            className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
             style={{
-              borderColor: activeType === null ? "var(--signal)" : "var(--hairline)",
+              border: `1px solid ${activeType === null ? "var(--signal)" : "var(--hairline)"}`,
               color: activeType === null ? "var(--signal)" : "var(--muted)",
+              background: activeType === null ? "var(--signal-dim)" : "var(--panel)",
             }}
           >
-            all
+            All
           </button>
           {typeOptions.map((t) => (
             <button
               key={t}
               onClick={() => onTypeChange(t)}
-              className="mono text-[10px] uppercase tracking-wider px-2 py-1 border transition-colors"
+              className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
               style={{
-                borderColor: activeType === t ? "var(--signal)" : "var(--hairline)",
+                border: `1px solid ${activeType === t ? "var(--signal)" : "var(--hairline)"}`,
                 color: activeType === t ? "var(--signal)" : "var(--muted)",
+                background: activeType === t ? "var(--signal-dim)" : "var(--panel)",
               }}
             >
               {t.replace("_", " ")}
@@ -91,7 +93,7 @@ export default function FindingsToolbar({
         </div>
       )}
 
-      <p className="mono text-xs" style={{ color: "var(--muted)" }}>
+      <p className="text-xs" style={{ color: "var(--muted)" }}>
         {resultCount} / {totalCount} findings
       </p>
     </div>

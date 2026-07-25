@@ -1,40 +1,26 @@
-import { useState, useEffect, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Asset } from "../types/scan";
 
-// Very small heuristic: valid IPv4 dotted-quad, or IPv6 containing a colon.
-// Anything else (has a dot but isn't numeric, or no dot at all but looks
-// hostname-like) is treated as a domain. This only needs to disambiguate
-// what the backend's tool registry cares about (AssetType.IP vs DOMAIN),
-// so it doesn't need to be a full RFC-grade validator.
-function inferAssetType(value: string): "ip" | "domain" {
-  const v = value.trim();
-  const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
-  if (IPV4_RE.test(v)) {
-    const octets = v.split(".").map(Number);
-    if (octets.every((o) => o >= 0 && o <= 255)) return "ip";
-  }
-  if (v.includes(":")) return "ip"; // crude IPv6 check
-  return "domain";
-}
+const TYPE_LABEL: Record<string, string> = {
+  domain: "Domain",
+  subdomain: "Subdomain",
+  ip: "IP",
+};
 
 export default function AssetSearch({
-  apiBase,
+  assets,
+  selectedAssetId,
   onSelect,
+  onCreate,
 }: {
-  apiBase: string;
+  assets: Asset[];
+  selectedAssetId?: number | null;
   onSelect: (asset: Asset) => void;
+  onCreate: (value: string, assetType: string) => Promise<Asset>;
 }) {
-  const [assets, setAssets] = useState<Asset[]>([]);
   const [query, setQuery] = useState("");
   const [newValue, setNewValue] = useState("");
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    fetch(`${apiBase}/assets`)
-      .then((r) => r.json())
-      .then(setAssets)
-      .catch(() => setAssets([]));
-  }, [apiBase]);
 
   const filtered = useMemo(
     () => assets.filter((a) => a.value.toLowerCase().includes(query.toLowerCase())),
@@ -42,76 +28,86 @@ export default function AssetSearch({
   );
 
   async function handleCreate() {
-    if (!newValue.trim()) return;
+    const value = newValue.trim();
+    if (!value) return;
     setCreating(true);
     try {
-      const value = newValue.trim();
-      const res = await fetch(`${apiBase}/assets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value, asset_type: inferAssetType(value) }),
-      });
-      const data: Asset = await res.json();
-      setAssets((prev) => (prev.some((a) => a.id === data.id) ? prev : [...prev, data]));
+      const asset = await onCreate(value, "ip");
       setNewValue("");
-      onSelect(data);
+      onSelect(asset);
     } finally {
       setCreating(false);
     }
   }
 
   return (
-    <div className="mb-6">
-      <div className="eyebrow mb-1.5">TARGET</div>
-      <input
-        className="field-input mb-2"
-        placeholder="search existing targets…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-
-      {query && (
-        <div className="panel mb-3 overflow-hidden divide-y" style={{ borderColor: "var(--hairline)" }}>
-          {filtered.length > 0 ? (
-            filtered.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => {
-                  onSelect(a);
-                  setQuery("");
-                }}
-                className="mono w-full text-left px-3 py-2 text-sm transition-colors"
-                style={{ borderColor: "var(--hairline)" }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--panel-alt)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                {a.value} <span style={{ color: "var(--muted)" }}>[{a.asset_type}]</span>
-              </button>
-            ))
-          ) : (
-            <p className="px-3 py-2 text-sm" style={{ color: "var(--muted)" }}>
-              no matching targets
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="eyebrow mb-1.5">NEW TARGET</div>
-      <div className="flex gap-2">
+    <div className="panel flex flex-col" style={{ maxHeight: "calc(100vh - 7rem)" }}>
+      <div className="p-4" style={{ borderBottom: "1px solid var(--hairline)" }}>
+        <p className="eyebrow mb-3">Targets</p>
         <input
-          className="field-input"
-          placeholder="ip or domain"
-          value={newValue}
-          onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-          onChange={(e) => setNewValue(e.target.value)}
+          className="field-input mb-3"
+          placeholder="Search targets…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
-        <button
-          onClick={handleCreate}
-          disabled={!newValue.trim() || creating}
-          className="btn-primary shrink-0"
-        >
-          {creating ? "adding…" : "add"}
-        </button>
+        <div className="flex gap-2">
+          <input
+            className="field-input"
+            placeholder="Add IP or domain"
+            value={newValue}
+            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            onChange={(e) => setNewValue(e.target.value)}
+          />
+          <button
+            onClick={handleCreate}
+            disabled={!newValue.trim() || creating}
+            className="btn-primary shrink-0"
+          >
+            {creating ? "…" : "Add"}
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-y-auto flex-1">
+        {filtered.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-center" style={{ color: "var(--muted)" }}>
+            {assets.length === 0 ? "No targets yet." : "No targets match your search."}
+          </p>
+        ) : (
+          <ul>
+            {filtered.map((a) => {
+              const active = a.id === selectedAssetId;
+              return (
+                <li key={a.id}>
+                  <button
+                    onClick={() => onSelect(a)}
+                    className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors"
+                    style={{
+                      background: active ? "var(--signal-dim)" : "transparent",
+                      borderLeft: `3px solid ${active ? "var(--signal)" : "transparent"}`,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) e.currentTarget.style.background = "var(--panel-alt)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) e.currentTarget.style.background = "transparent";
+                    }}
+                  >
+                    <span className="mono text-sm truncate" style={{ color: "var(--text)" }}>
+                      {a.value}
+                    </span>
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded"
+                      style={{ color: "var(--muted)", background: "var(--panel-alt)" }}
+                    >
+                      {TYPE_LABEL[a.asset_type] || a.asset_type}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ interface BodyProps {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="text-xs w-24 shrink-0" style={{ color: "var(--muted)" }}>
+      <span className="text-xs w-28 shrink-0" style={{ color: "var(--muted)" }}>
         {label}
       </span>
       <span className="mono">{children}</span>
@@ -20,28 +20,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function HostInfoBody({ data }: BodyProps) {
   return (
     <div className="space-y-1.5">
-      <Field label="ip address">
+      <Field label="IP address">
         {data.ip}
         {data.ip && <CopyButton value={data.ip} />}
       </Field>
-      <Field label="organization">
+      <Field label="Organization">
         {data.org || "unknown"}
-        {data.isp && data.isp !== data.org ? ` · isp: ${data.isp}` : ""}
+        {data.isp && data.isp !== data.org ? ` · ISP: ${data.isp}` : ""}
       </Field>
-      {data.asn && <Field label="asn">{data.asn}</Field>}
+      {data.asn && <Field label="ASN">{data.asn}</Field>}
       {(data.city || data.country_name) && (
-        <Field label="location">{[data.city, data.country_name].filter(Boolean).join(", ")}</Field>
+        <Field label="Location">{[data.city, data.country_name].filter(Boolean).join(", ")}</Field>
       )}
       {data.hostnames?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            hostnames
+          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            Hostnames
           </span>
           <div className="flex flex-wrap gap-1">
             {data.hostnames.map((h: string) => (
               <span
                 key={h}
-                className="mono text-xs px-2 py-0.5 flex items-center gap-1"
+                className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
                 style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
               >
                 {h}
@@ -51,7 +51,7 @@ function HostInfoBody({ data }: BodyProps) {
           </div>
         </div>
       )}
-      {data.ports?.length > 0 && <Field label="open ports">{data.ports.join(", ")}</Field>}
+      {data.ports?.length > 0 && <Field label="Open ports">{data.ports.join(", ")}</Field>}
     </div>
   );
 }
@@ -59,22 +59,19 @@ function HostInfoBody({ data }: BodyProps) {
 function OpenPortBody({ data }: BodyProps) {
   return (
     <div className="space-y-1.5">
-      <Field label="service">
+      <Field label="Service">
         {data.product ? `${data.product}${data.version ? " " + data.version : ""}` : "unidentified"}
       </Field>
-      <Field label="endpoint">
+      <Field label="Endpoint">
         {data.transport}/{data.port}
         <CopyButton value={String(data.port)} />
       </Field>
       {data.banner && (
         <details className="mt-1">
-          <summary className="mono cursor-pointer text-xs" style={{ color: "var(--muted)" }}>
-            show raw banner
+          <summary className="cursor-pointer text-xs font-medium" style={{ color: "var(--signal)" }}>
+            Show raw banner
           </summary>
-          <pre
-            className="mono text-xs whitespace-pre-wrap mt-1 p-2 max-h-40 overflow-y-auto"
-            style={{ background: "var(--ink)", border: "1px solid var(--hairline)", color: "var(--muted)" }}
-          >
+          <pre className="code-panel mono text-xs whitespace-pre-wrap mt-2 p-3 max-h-40 overflow-y-auto">
             {data.banner}
           </pre>
         </details>
@@ -84,16 +81,16 @@ function OpenPortBody({ data }: BodyProps) {
 }
 
 function VulnerabilityBody({ data }: BodyProps) {
-  const color = data.cvss >= 9 ? "#E0525C" : data.cvss >= 7 ? "#E08A4B" : "var(--text)";
+  const color = data.cvss >= 9 ? "var(--danger)" : data.cvss >= 7 ? "var(--warning)" : "var(--text)";
   return (
     <div className="space-y-1.5">
-      <Field label="cvss score">
+      <Field label="CVSS score">
         <strong style={{ color }}>{data.cvss}</strong>
       </Field>
       {data.summary && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-24 shrink-0" style={{ color: "var(--muted)" }}>
-            summary
+          <span className="text-xs w-28 shrink-0" style={{ color: "var(--muted)" }}>
+            Summary
           </span>
           <p style={{ color: "var(--muted)" }}>{data.summary}</p>
         </div>
@@ -105,25 +102,25 @@ function VulnerabilityBody({ data }: BodyProps) {
 function DomainRegistrationBody({ data }: BodyProps) {
   return (
     <div className="space-y-1.5">
-      <Field label="domain">
+      <Field label="Domain">
         {data.domain}
         {data.domain && <CopyButton value={data.domain} />}
       </Field>
-      <Field label="registrar">{data.registrar || "unknown"}</Field>
-      {data.creation_date && <Field label="created">{data.creation_date}</Field>}
-      {data.expiration_date && <Field label="expires">{data.expiration_date}</Field>}
-      {data.org && <Field label="org">{data.org}</Field>}
-      {data.country && <Field label="country">{data.country}</Field>}
+      <Field label="Registrar">{data.registrar || "unknown"}</Field>
+      {data.creation_date && <Field label="Created">{data.creation_date}</Field>}
+      {data.expiration_date && <Field label="Expires">{data.expiration_date}</Field>}
+      {data.org && <Field label="Org">{data.org}</Field>}
+      {data.country && <Field label="Country">{data.country}</Field>}
       {data.name_servers?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            name servers
+          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            Name servers
           </span>
           <div className="flex flex-wrap gap-1">
             {data.name_servers.map((ns: string) => (
               <span
                 key={ns}
-                className="mono text-xs px-2 py-0.5"
+                className="mono text-xs px-2 py-0.5 rounded"
                 style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
               >
                 {ns}
@@ -132,17 +129,17 @@ function DomainRegistrationBody({ data }: BodyProps) {
           </div>
         </div>
       )}
-      {data.status?.length > 0 && <Field label="status">{data.status.join(", ")}</Field>}
+      {data.status?.length > 0 && <Field label="Status">{data.status.join(", ")}</Field>}
       {data.emails?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            emails
+          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            Emails
           </span>
           <div className="flex flex-wrap gap-1">
             {data.emails.map((e: string) => (
               <span
                 key={e}
-                className="mono text-xs px-2 py-0.5 flex items-center gap-1"
+                className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
                 style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
               >
                 {e}
@@ -158,11 +155,11 @@ function DomainRegistrationBody({ data }: BodyProps) {
 
 function DomainExpiryBody({ data }: BodyProps) {
   const expired = data.days_remaining < 0;
-  const color = expired ? "#E0525C" : "#D9BB4C";
+  const color = expired ? "var(--danger)" : "var(--warning)";
   return (
     <div className="space-y-1.5">
-      <Field label="expiration">{data.expiration_date}</Field>
-      <Field label="days remaining">
+      <Field label="Expiration">{data.expiration_date}</Field>
+      <Field label="Days remaining">
         <strong style={{ color }}>{data.days_remaining}</strong>
       </Field>
     </div>
@@ -196,18 +193,18 @@ export default function FindingCard({ finding }: { finding: Finding }) {
 
   return (
     <div
-      className="mb-3 pl-4 pr-4 py-4"
-      style={{ background: "var(--panel)", borderLeft: `3px solid ${accent}`, borderRadius: "var(--radius)" }}
+      className="panel mb-3 pl-4 pr-5 py-4"
+      style={{ borderLeft: `3px solid ${accent}` }}
     >
       <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex items-start gap-2">
           <span
-            className="mono text-[10px] tracking-wider px-1.5 py-0.5 mt-0.5"
+            className="mono text-[10px] font-semibold tracking-wider px-1.5 py-0.5 mt-0.5 rounded"
             style={{ background: "var(--panel-alt)", color: "var(--muted)" }}
           >
             {TYPE_TAGS[finding.finding_type] || finding.finding_type.toUpperCase()}
           </span>
-          <h4 className="font-medium flex items-center gap-2">
+          <h4 className="font-semibold flex items-center gap-2">
             {finding.title}
             <CopyButton value={finding.title} />
           </h4>
@@ -224,13 +221,10 @@ export default function FindingCard({ finding }: { finding: Finding }) {
       )}
 
       <details className="mt-3">
-        <summary className="mono cursor-pointer text-xs" style={{ color: "var(--muted)" }}>
-          view raw json
+        <summary className="cursor-pointer text-xs font-medium" style={{ color: "var(--signal)" }}>
+          View raw JSON
         </summary>
-        <pre
-          className="mono text-xs whitespace-pre-wrap mt-1 p-2 max-h-60 overflow-y-auto"
-          style={{ background: "var(--ink)", border: "1px solid var(--hairline)", color: "var(--muted)" }}
-        >
+        <pre className="code-panel mono text-xs whitespace-pre-wrap mt-2 p-3 max-h-60 overflow-y-auto">
           {JSON.stringify(finding.data, null, 2)}
         </pre>
       </details>

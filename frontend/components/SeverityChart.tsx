@@ -1,4 +1,5 @@
 import { Finding, Severity } from "../types/scan";
+import { SEVERITY_HEX } from "./SeverityBadge";
 
 const ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
 
@@ -16,21 +17,30 @@ export default function SeverityChart({ findings }: SeverityChartProps) {
   const max = Math.max(...Object.values(counts), 1);
 
   return (
-    <div className="mb-6 bg-gray-900 rounded p-4">
-      <h3 className="text-sm font-semibold text-gray-300 mb-3">Findings by severity</h3>
-      <div className="space-y-2">
+    <div className="panel card-pad mb-6">
+      <h3 className="text-sm font-bold mb-4">Findings by severity</h3>
+      <div className="space-y-2.5">
         {ORDER.map((sev) => {
           const count = counts[sev];
+          const color = SEVERITY_HEX[sev];
           return (
             <div key={sev} className="flex items-center gap-3">
-              <span className="w-16 text-xs text-gray-400 capitalize">{sev}</span>
-              <div className="flex-1 bg-gray-800 rounded h-4 overflow-hidden">
+              <span className="w-16 text-xs capitalize font-medium" style={{ color: "var(--muted)" }}>
+                {sev}
+              </span>
+              <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: "var(--panel-alt)" }}>
                 <div
-                  className="h-4 transition-all"
-                  style={{ width: `${(count / max) * 100}%`, minWidth: count > 0 ? "8px" : 0 }}
+                  className="h-2 rounded-full transition-all"
+                  style={{
+                    width: `${(count / max) * 100}%`,
+                    minWidth: count > 0 ? "8px" : 0,
+                    background: color,
+                  }}
                 />
               </div>
-              <span className="w-6 text-xs text-gray-400 text-right">{count}</span>
+              <span className="w-6 text-xs text-right tabular-nums" style={{ color: "var(--muted)" }}>
+                {count}
+              </span>
             </div>
           );
         })}
