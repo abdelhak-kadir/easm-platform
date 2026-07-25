@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Dashboard from "../components/Dashboard";
 import AssetSearch from "../components/AssetSearch";
 import ScanHistory from "../components/ScanHistory";
 import FindingCard from "../components/FindingCard";
 import StatsSummary from "../components/StatsSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
-import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
+import { Asset, DashboardScan, ScanJob, ScanResults, Severity } from "../types/scan";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -44,6 +45,29 @@ export default function Home() {
     if (!res.ok) return;
     const data: Asset = await res.json();
     selectAsset(data);
+  }
+
+  // Open a scan straight from the dashboard's cross-asset feed: the
+  // row already carries its owning asset's identity plus its own job
+  // fields, so this can select both in one shot instead of first
+  // picking the asset and then hunting for the job in its history.
+  function openScanFromDashboard(scan: DashboardScan) {
+    const targetAsset: Asset = {
+      id: scan.asset_id,
+      value: scan.asset_value,
+      asset_type: scan.asset_type,
+    };
+    setAsset(targetAsset);
+    setAssetJobs([]);
+    resetFilters();
+    selectPastJob({
+      id: scan.id,
+      tool: scan.tool,
+      status: scan.status,
+      created_at: scan.created_at,
+      completed_at: scan.completed_at,
+    });
+    setHistoryRefresh((k) => k + 1);
   }
 
   function resetFilters() {
@@ -129,6 +153,8 @@ export default function Home() {
       <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
         Attack surface reconnaissance
       </p>
+
+      <Dashboard apiBase={API_BASE} onOpenScan={openScanFromDashboard} refreshKey={historyRefresh} />
 
       <AssetSearch apiBase={API_BASE} onSelect={selectAsset} />
 
