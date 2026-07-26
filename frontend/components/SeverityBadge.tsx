@@ -1,4 +1,5 @@
 import { Severity } from "../types/scan";
+import { severityLabel } from "../lib/labels";
 
 export const SEVERITY_HEX: Record<Severity, string> = {
   critical: "#D92D20",
@@ -15,7 +16,7 @@ export default function SeverityBadge({ severity }: { severity: Severity }) {
       className="text-[11px] font-semibold tracking-wide px-2 py-1 rounded-full shrink-0"
       style={{ color, backgroundColor: `${color}14` }}
     >
-      {severity.toUpperCase()}
+      {severityLabel(severity).toUpperCase()}
     </span>
   );
 }

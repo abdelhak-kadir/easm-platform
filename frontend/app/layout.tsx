@@ -21,13 +21,13 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EASM — Attack Surface Dashboard",
-  description: "External attack surface reconnaissance dashboard",
+  title: "EASM — Tableau de bord de surface d'attaque",
+  description: "Tableau de bord de reconnaissance de surface d'attaque externe",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${manrope.variable} ${plexSans.variable} ${plexMono.variable}`}>
+    <html lang="fr" className={`${manrope.variable} ${plexSans.variable} ${plexMono.variable}`}>
       <body>{children}</body>
     </html>
   );

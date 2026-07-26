@@ -15,10 +15,10 @@ export default function StatsSummary({ findings }: StatsSummaryProps) {
   const criticalOrHigh = (bySeverity.critical || 0) + (bySeverity.high || 0);
 
   const cols = [
-    { label: "Needs attention", value: criticalOrHigh, tone: criticalOrHigh > 0 ? "var(--danger)" : "var(--text)" },
-    { label: "Open ports", value: openPorts, tone: "var(--text)" },
-    { label: "Vulnerabilities", value: vulns, tone: vulns > 0 ? "var(--warning)" : "var(--text)" },
-    { label: "Total findings", value: findings.length, tone: "var(--text)" },
+    { label: "À corriger en priorité", value: criticalOrHigh, tone: criticalOrHigh > 0 ? "var(--danger)" : "var(--text)" },
+    { label: "Ports ouverts", value: openPorts, tone: "var(--text)" },
+    { label: "Vulnérabilités", value: vulns, tone: vulns > 0 ? "var(--warning)" : "var(--text)" },
+    { label: "Résultats au total", value: findings.length, tone: "var(--text)" },
   ];
 
   return (

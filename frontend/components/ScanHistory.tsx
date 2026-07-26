@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { Asset, ScanJob } from "../types/scan";
 import { timeAgo } from "../lib/time";
+import { toolLabel } from "../lib/labels";
 
-const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
-  completed: { color: "var(--success)", bg: "var(--success-dim)" },
-  failed: { color: "var(--danger)", bg: "var(--danger-dim)" },
-  running: { color: "var(--warning)", bg: "var(--warning-dim)" },
-  pending: { color: "var(--muted)", bg: "var(--panel-alt)" },
+const STATUS_STYLE: Record<string, { color: string; bg: string; label: string }> = {
+  completed: { color: "var(--success)", bg: "var(--success-dim)", label: "TERMINÉE" },
+  failed: { color: "var(--danger)", bg: "var(--danger-dim)", label: "ÉCHOUÉE" },
+  running: { color: "var(--warning)", bg: "var(--warning-dim)", label: "EN COURS" },
+  pending: { color: "var(--muted)", bg: "var(--panel-alt)", label: "EN ATTENTE" },
 };
 
 export default function ScanHistory({
@@ -54,14 +55,14 @@ export default function ScanHistory({
         className="text-xs px-4 py-4 mb-6 rounded-lg text-center"
         style={{ color: "var(--muted)", border: "1px dashed var(--hairline)" }}
       >
-        No previous scans for this target — run one above to get started.
+        Aucune analyse précédente pour cette cible — lancez-en une ci-dessus pour commencer.
       </p>
     );
   }
 
   return (
     <div className="mb-6">
-      <p className="eyebrow mb-2">Scan history</p>
+      <p className="eyebrow mb-2">Historique des analyses</p>
       <div className="panel divide-y" style={{ borderColor: "var(--hairline)" }}>
         {jobs.map((j) => {
           const style = STATUS_STYLE[j.status] || STATUS_STYLE.pending;
@@ -74,9 +75,11 @@ export default function ScanHistory({
                   background: activeJobId === j.id ? "var(--panel-alt)" : "transparent",
                 }}
               >
-                <span className="flex items-center gap-2">
-                  <span className="font-medium">{j.tool}</span>
-                  <span style={{ color: "var(--faint)" }}>#{j.id}</span>
+                <span className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{toolLabel(j.tool)}</span>
+                  <span className="mono text-xs" style={{ color: "var(--faint)" }}>
+                    {j.tool} · #{j.id}
+                  </span>
                   {j.completed_at && (
                     <span className="text-xs" style={{ color: "var(--muted)" }}>
                       {timeAgo(j.completed_at)}
@@ -87,19 +90,19 @@ export default function ScanHistory({
                   className="text-[11px] font-semibold px-2 py-1 rounded-full"
                   style={{ color: style.color, background: style.bg }}
                 >
-                  {j.status.toUpperCase()}
+                  {style.label}
                 </span>
               </button>
 
               {j.spawned_asset_value && (
                 <div className="text-xs px-4 pb-2.5 flex items-center gap-2 flex-wrap" style={{ color: "var(--muted)" }}>
                   <span>
-                    → resolved IP <span className="mono">{j.spawned_asset_value}</span> · {j.spawned_job_tool}{" "}
+                    → IP résolue <span className="mono">{j.spawned_asset_value}</span> · {toolLabel(j.spawned_job_tool || "")}{" "}
                     <span
                       className="font-semibold"
                       style={{ color: (STATUS_STYLE[j.spawned_job_status || ""] || STATUS_STYLE.pending).color }}
                     >
-                      {(j.spawned_job_status || "").toUpperCase()}
+                      {(STATUS_STYLE[j.spawned_job_status || ""] || STATUS_STYLE.pending).label}
                     </span>
                   </span>
                   {j.spawned_asset_id != null && (
@@ -108,7 +111,7 @@ export default function ScanHistory({
                       className="font-medium underline"
                       style={{ color: "var(--signal)" }}
                     >
-                      view
+                      voir
                     </button>
                   )}
                 </div>

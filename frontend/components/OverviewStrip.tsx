@@ -1,12 +1,13 @@
 import { Asset } from "../types/scan";
 import { FleetJob } from "../lib/useFleetScans";
 import { timeAgo } from "../lib/time";
+import { toolLabel } from "../lib/labels";
 
-const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
-  completed: { color: "var(--success)", bg: "var(--success-dim)" },
-  failed: { color: "var(--danger)", bg: "var(--danger-dim)" },
-  running: { color: "var(--warning)", bg: "var(--warning-dim)" },
-  pending: { color: "var(--muted)", bg: "var(--panel-alt)" },
+const STATUS_STYLE: Record<string, { color: string; bg: string; label: string }> = {
+  completed: { color: "var(--success)", bg: "var(--success-dim)", label: "TERMINÉE" },
+  failed: { color: "var(--danger)", bg: "var(--danger-dim)", label: "ÉCHOUÉE" },
+  running: { color: "var(--warning)", bg: "var(--warning-dim)", label: "EN COURS" },
+  pending: { color: "var(--muted)", bg: "var(--panel-alt)", label: "EN ATTENTE" },
 };
 
 interface OverviewStripProps {
@@ -21,11 +22,11 @@ export default function OverviewStrip({ assets, jobs, activeCount, onSelectAsset
   const lastScan = jobs.find((j) => j.completed_at || j.created_at);
 
   const kpis = [
-    { label: "Targets tracked", value: assets.length },
-    { label: "Scans in progress", value: activeCount, tone: activeCount > 0 ? "var(--warning)" : undefined },
-    { label: "Scans completed", value: completedCount },
+    { label: "Cibles suivies", value: assets.length },
+    { label: "Analyses en cours", value: activeCount, tone: activeCount > 0 ? "var(--warning)" : undefined },
+    { label: "Analyses terminées", value: completedCount },
     {
-      label: "Last activity",
+      label: "Dernière activité",
       value: lastScan ? timeAgo(lastScan.completed_at || lastScan.created_at || "") : "—",
       isText: true,
     },
@@ -49,15 +50,15 @@ export default function OverviewStrip({ assets, jobs, activeCount, onSelectAsset
 
       <div className="panel overflow-hidden">
         <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid var(--hairline)" }}>
-          <h2 className="text-sm font-bold">Recent scans</h2>
+          <h2 className="text-sm font-bold">Analyses récentes</h2>
           <span className="text-xs" style={{ color: "var(--muted)" }}>
-            across all targets
+            toutes cibles confondues
           </span>
         </div>
 
         {jobs.length === 0 ? (
           <p className="px-5 py-8 text-sm text-center" style={{ color: "var(--muted)" }}>
-            No scans yet — add a target and run your first scan to see activity here.
+            Aucune analyse pour le moment — ajoutez une cible et lancez votre première analyse pour voir l'activité ici.
           </p>
         ) : (
           <div className="divide-y" style={{ borderColor: "var(--hairline)" }}>
@@ -75,7 +76,7 @@ export default function OverviewStrip({ assets, jobs, activeCount, onSelectAsset
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="mono text-sm font-medium truncate">{j.asset_value}</span>
                     <span className="text-xs shrink-0" style={{ color: "var(--muted)" }}>
-                      {j.tool}
+                      {toolLabel(j.tool)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
@@ -86,7 +87,7 @@ export default function OverviewStrip({ assets, jobs, activeCount, onSelectAsset
                       className="text-[11px] font-semibold px-2 py-1 rounded-full"
                       style={{ color: style.color, background: style.bg }}
                     >
-                      {j.status.toUpperCase()}
+                      {style.label}
                     </span>
                   </div>
                 </button>

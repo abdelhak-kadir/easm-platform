@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { Asset } from "../types/scan";
 
 const TYPE_LABEL: Record<string, string> = {
-  domain: "Domain",
-  subdomain: "Subdomain",
+  domain: "Domaine",
+  subdomain: "Sous-domaine",
   ip: "IP",
 };
 
@@ -43,17 +43,20 @@ export default function AssetSearch({
   return (
     <div className="panel flex flex-col" style={{ maxHeight: "calc(100vh - 7rem)" }}>
       <div className="p-4" style={{ borderBottom: "1px solid var(--hairline)" }}>
-        <p className="eyebrow mb-3">Targets</p>
+        <p className="eyebrow mb-1">Que souhaitez-vous vérifier ?</p>
+        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+          Une adresse de site web ou une IP de serveur à analyser pour détecter des failles de sécurité.
+        </p>
         <input
           className="field-input mb-3"
-          placeholder="Search targets…"
+          placeholder="Rechercher…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <div className="flex gap-2">
           <input
             className="field-input"
-            placeholder="Add IP or domain"
+            placeholder="ex. example.com"
             value={newValue}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             onChange={(e) => setNewValue(e.target.value)}
@@ -63,7 +66,7 @@ export default function AssetSearch({
             disabled={!newValue.trim() || creating}
             className="btn-primary shrink-0"
           >
-            {creating ? "…" : "Add"}
+            {creating ? "…" : "Ajouter"}
           </button>
         </div>
       </div>
@@ -71,7 +74,7 @@ export default function AssetSearch({
       <div className="overflow-y-auto flex-1">
         {filtered.length === 0 ? (
           <p className="px-4 py-6 text-sm text-center" style={{ color: "var(--muted)" }}>
-            {assets.length === 0 ? "No targets yet." : "No targets match your search."}
+            {assets.length === 0 ? "Aucune cible pour le moment." : "Aucune cible ne correspond à votre recherche."}
           </p>
         ) : (
           <ul>

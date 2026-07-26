@@ -22,7 +22,7 @@ export default function TopNav({ activeScanCount }: { activeScanCount: number })
               EASM
             </p>
             <p className="text-[11px] leading-none mt-0.5" style={{ color: "var(--muted)" }}>
-              Attack Surface Dashboard
+              Tableau de bord de surface d'attaque
             </p>
           </div>
         </div>
@@ -40,8 +40,8 @@ export default function TopNav({ activeScanCount }: { activeScanCount: number })
             style={{ color: live ? "var(--signal-hover)" : "var(--muted)" }}
           >
             {live
-              ? `${activeScanCount} scan${activeScanCount === 1 ? "" : "s"} in progress`
-              : "All systems clear"}
+              ? `${activeScanCount} analyse${activeScanCount === 1 ? "" : "s"} en cours`
+              : "Tout est calme"}
           </span>
         </div>
       </div>

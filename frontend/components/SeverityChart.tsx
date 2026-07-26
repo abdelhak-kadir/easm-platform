@@ -1,5 +1,6 @@
 import { Finding, Severity } from "../types/scan";
 import { SEVERITY_HEX } from "./SeverityBadge";
+import { severityLabel } from "../lib/labels";
 
 const ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
 
@@ -18,15 +19,15 @@ export default function SeverityChart({ findings }: SeverityChartProps) {
 
   return (
     <div className="panel card-pad mb-6">
-      <h3 className="text-sm font-bold mb-4">Findings by severity</h3>
+      <h3 className="text-sm font-bold mb-4">Résultats par gravité</h3>
       <div className="space-y-2.5">
         {ORDER.map((sev) => {
           const count = counts[sev];
           const color = SEVERITY_HEX[sev];
           return (
             <div key={sev} className="flex items-center gap-3">
-              <span className="w-16 text-xs capitalize font-medium" style={{ color: "var(--muted)" }}>
-                {sev}
+              <span className="w-16 text-xs font-medium" style={{ color: "var(--muted)" }}>
+                {severityLabel(sev)}
               </span>
               <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: "var(--panel-alt)" }}>
                 <div

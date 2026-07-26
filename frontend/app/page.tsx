@@ -8,6 +8,7 @@ import ScanHistory from "../components/ScanHistory";
 import FindingCard from "../components/FindingCard";
 import StatsSummary from "../components/StatsSummary";
 import SeverityChart from "../components/SeverityChart";
+import RiskSummary from "../components/RiskSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
@@ -156,9 +157,12 @@ export default function Home() {
                 style={{ color: "var(--muted)" }}
               >
                 <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
-                  No target selected
+                  Choisissez une cible à vérifier
                 </p>
-                <p className="text-sm">Pick a target from the list, or add a new IP or domain to get started.</p>
+                <p className="text-sm max-w-sm mx-auto">
+                  Sélectionnez une cible dans la liste à gauche, ou ajoutez une adresse de site
+                  web ou une IP que vous souhaitez vérifier.
+                </p>
               </div>
             )}
 
@@ -166,11 +170,16 @@ export default function Home() {
               <>
                 <div className={`panel flex items-center justify-between px-5 py-4 mb-5 ${scanning ? "scan-sweep" : ""}`}>
                   <div>
-                    <p className="eyebrow mb-1">Active target</p>
+                    <p className="eyebrow mb-1">Cible en cours de vérification</p>
                     <p className="mono text-base font-medium">{asset.value}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                      {scanning
+                        ? "Vérification de sécurité en cours — cela prend généralement une à deux minutes."
+                        : "Lancez une vérification pour détecter d'éventuelles failles de sécurité sur cette cible."}
+                    </p>
                   </div>
-                  <button onClick={triggerScan} disabled={scanning} className="btn-primary">
-                    {scanning ? "Scanning…" : "Run scan"}
+                  <button onClick={triggerScan} disabled={scanning} className="btn-primary shrink-0">
+                    {scanning ? "Vérification…" : "Vérifier maintenant"}
                   </button>
                 </div>
 
@@ -189,12 +198,13 @@ export default function Home() {
                     className="text-sm px-4 py-3 mb-5 rounded-lg"
                     style={{ color: "var(--danger)", border: "1px solid var(--danger)", background: "var(--danger-dim)" }}
                   >
-                    Scan failed — check the job status above or try again.
+                    La vérification a échoué — consultez le statut ci-dessus ou réessayez.
                   </p>
                 )}
 
                 {results?.findings && (
                   <section>
+                    <RiskSummary findings={results.findings} assetValue={asset.value} />
                     <StatsSummary findings={results.findings} />
                     {results.findings.length > 0 && <SeverityChart findings={results.findings} />}
                     <FindingsToolbar
@@ -202,6 +212,7 @@ export default function Home() {
                       onSearchChange={setSearch}
                       activeSeverities={activeSeverities}
                       onToggleSeverity={toggleSeverity}
+                      onSetSeverities={setActiveSeverities}
                       typeOptions={typeOptions}
                       activeType={activeType}
                       onTypeChange={setActiveType}
@@ -216,12 +227,13 @@ export default function Home() {
                         className="text-sm px-4 py-6 text-center rounded-lg"
                         style={{ color: "var(--muted)", border: "1px dashed var(--hairline)" }}
                       >
-                        No findings match the current filters.
+                        Aucun résultat ne correspond aux filtres actuels.
                       </p>
                     )}
                   </section>
                 )}
               </>
+
             )}
           </section>
         </div>

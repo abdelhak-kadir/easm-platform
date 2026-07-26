@@ -19,9 +19,9 @@ export default function CopyButton({ value }: { value: string }) {
         color: copied ? "var(--success)" : "var(--muted)",
         background: copied ? "var(--success-dim)" : "var(--panel)",
       }}
-      title={`copy "${value}"`}
+      title={`copier « ${value} »`}
     >
-      {copied ? "done" : "copy"}
+      {copied ? "copié" : "copier"}
     </button>
   );
 }

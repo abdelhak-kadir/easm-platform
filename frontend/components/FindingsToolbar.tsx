@@ -1,13 +1,17 @@
 import { Severity } from "../types/scan";
 import { SEVERITY_HEX } from "./SeverityBadge";
+import { findingTypeLabel, severityLabel } from "../lib/labels";
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
+const URGENT: Severity[] = ["critical", "high"];
+const ALL_SEVERITIES: Severity[] = [...SEVERITY_ORDER];
 
 interface FindingsToolbarProps {
   search: string;
   onSearchChange: (v: string) => void;
   activeSeverities: Set<Severity>;
   onToggleSeverity: (s: Severity) => void;
+  onSetSeverities: (s: Set<Severity>) => void;
   typeOptions: string[];
   activeType: string | null;
   onTypeChange: (t: string | null) => void;
@@ -20,12 +24,17 @@ export default function FindingsToolbar({
   onSearchChange,
   activeSeverities,
   onToggleSeverity,
+  onSetSeverities,
   typeOptions,
   activeType,
   onTypeChange,
   resultCount,
   totalCount,
 }: FindingsToolbarProps) {
+  const isUrgentOnly =
+    activeSeverities.size === URGENT.length && URGENT.every((s) => activeSeverities.has(s));
+  const isAll = activeSeverities.size === ALL_SEVERITIES.length;
+
   return (
     <div className="mb-5 space-y-3">
       <div className="relative">
@@ -34,68 +43,100 @@ export default function FindingsToolbar({
         </span>
         <input
           className="field-input pl-9"
-          placeholder="Search title, port, CVE, hostname…"
+          placeholder="Rechercher dans les résultats…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="eyebrow mr-1">Severity</span>
-        {SEVERITY_ORDER.map((sev) => {
-          const active = activeSeverities.has(sev);
-          const color = SEVERITY_HEX[sev];
-          return (
-            <button
-              key={sev}
-              onClick={() => onToggleSeverity(sev)}
-              className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
-              style={{
-                border: `1px solid ${active ? color : "var(--hairline)"}`,
-                color: active ? color : "var(--muted)",
-                background: active ? `${color}14` : "var(--panel)",
-              }}
-            >
-              {sev}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => onSetSeverities(new Set(URGENT))}
+          className="text-sm font-semibold px-3.5 py-1.5 rounded-full transition-colors"
+          style={{
+            border: `1px solid ${isUrgentOnly ? "var(--danger)" : "var(--hairline)"}`,
+            color: isUrgentOnly ? "var(--danger)" : "var(--muted)",
+            background: isUrgentOnly ? "var(--danger-dim)" : "var(--panel)",
+          }}
+        >
+          À corriger uniquement
+        </button>
+        <button
+          onClick={() => onSetSeverities(new Set(ALL_SEVERITIES))}
+          className="text-sm font-semibold px-3.5 py-1.5 rounded-full transition-colors"
+          style={{
+            border: `1px solid ${isAll ? "var(--signal)" : "var(--hairline)"}`,
+            color: isAll ? "var(--signal)" : "var(--muted)",
+            background: isAll ? "var(--signal-dim)" : "var(--panel)",
+          }}
+        >
+          Tout afficher
+        </button>
       </div>
 
-      {typeOptions.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="eyebrow mr-1">Type</span>
-          <button
-            onClick={() => onTypeChange(null)}
-            className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
-            style={{
-              border: `1px solid ${activeType === null ? "var(--signal)" : "var(--hairline)"}`,
-              color: activeType === null ? "var(--signal)" : "var(--muted)",
-              background: activeType === null ? "var(--signal-dim)" : "var(--panel)",
-            }}
-          >
-            All
-          </button>
-          {typeOptions.map((t) => (
-            <button
-              key={t}
-              onClick={() => onTypeChange(t)}
-              className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
-              style={{
-                border: `1px solid ${activeType === t ? "var(--signal)" : "var(--hairline)"}`,
-                color: activeType === t ? "var(--signal)" : "var(--muted)",
-                background: activeType === t ? "var(--signal-dim)" : "var(--panel)",
-              }}
-            >
-              {t.replace("_", " ")}
-            </button>
-          ))}
-        </div>
-      )}
-
       <p className="text-xs" style={{ color: "var(--muted)" }}>
-        {resultCount} / {totalCount} findings
+        Affichage de {resultCount} sur {totalCount} résultats
       </p>
+
+      <details className="group">
+        <summary className="cursor-pointer text-xs font-medium inline-flex items-center gap-1" style={{ color: "var(--signal)" }}>
+          Plus de filtres
+        </summary>
+        <div className="mt-3 space-y-3 pl-0.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="eyebrow mr-1">Gravité</span>
+            {SEVERITY_ORDER.map((sev) => {
+              const active = activeSeverities.has(sev);
+              const color = SEVERITY_HEX[sev];
+              return (
+                <button
+                  key={sev}
+                  onClick={() => onToggleSeverity(sev)}
+                  className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
+                  style={{
+                    border: `1px solid ${active ? color : "var(--hairline)"}`,
+                    color: active ? color : "var(--muted)",
+                    background: active ? `${color}14` : "var(--panel)",
+                  }}
+                >
+                  {severityLabel(sev)}
+                </button>
+              );
+            })}
+          </div>
+
+          {typeOptions.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="eyebrow mr-1">Catégorie</span>
+              <button
+                onClick={() => onTypeChange(null)}
+                className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
+                style={{
+                  border: `1px solid ${activeType === null ? "var(--signal)" : "var(--hairline)"}`,
+                  color: activeType === null ? "var(--signal)" : "var(--muted)",
+                  background: activeType === null ? "var(--signal-dim)" : "var(--panel)",
+                }}
+              >
+                Toutes
+              </button>
+              {typeOptions.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => onTypeChange(t)}
+                  className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
+                  style={{
+                    border: `1px solid ${activeType === t ? "var(--signal)" : "var(--hairline)"}`,
+                    color: activeType === t ? "var(--signal)" : "var(--muted)",
+                    background: activeType === t ? "var(--signal-dim)" : "var(--panel)",
+                  }}
+                >
+                  {findingTypeLabel(t)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
