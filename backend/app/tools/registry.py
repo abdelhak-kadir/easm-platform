@@ -53,12 +53,23 @@ def _resolve_domain_to_ip(domain: str) -> str | None:
         return None
 
 
+def _resolve_ip_to_domain(ip: str) -> str | None:
+    try:
+        hostname, _, _ = socket.gethostbyaddr(ip)
+        return hostname
+    except OSError:
+        return None
+
+
 TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
     ToolName.SHODAN: ToolSpec(
         tool=ToolName.SHODAN,
         run=shodan_scan.run,
         parse=shodan_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        spawns=ToolName.WHOIS,
+        spawn_asset_type=AssetType.DOMAIN,
+        resolve_spawn_value=_resolve_ip_to_domain,
     ),
     ToolName.WHOIS: ToolSpec(
         tool=ToolName.WHOIS,

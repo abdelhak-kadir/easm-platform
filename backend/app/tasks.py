@@ -38,6 +38,14 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
         db.commit()
         db.refresh(spawned_asset)
 
+    already_scanned = (
+        db.query(ScanJob)
+        .filter(ScanJob.asset_id == spawned_asset.id, ScanJob.tool == spec.spawns)
+        .first()
+    )
+    if already_scanned:
+        return
+
     spawned_job = ScanJob(asset_id=spawned_asset.id, tool=spec.spawns, status=ScanStatus.PENDING)
     db.add(spawned_job)
     db.commit()
