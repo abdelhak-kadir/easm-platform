@@ -21,6 +21,7 @@ export default function AssetSearch({
   const [query, setQuery] = useState("");
   const [newValue, setNewValue] = useState("");
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const filtered = useMemo(
     () => assets.filter((a) => a.value.toLowerCase().includes(query.toLowerCase())),
@@ -31,10 +32,13 @@ export default function AssetSearch({
     const value = newValue.trim();
     if (!value) return;
     setCreating(true);
+    setError(null);
     try {
       const asset = await onCreate(value, "ip");
       setNewValue("");
       onSelect(asset);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Une erreur inattendue s'est produite.");
     } finally {
       setCreating(false);
     }
@@ -69,6 +73,11 @@ export default function AssetSearch({
             {creating ? "…" : "Ajouter"}
           </button>
         </div>
+        {error && (
+          <p className="text-xs mt-2" style={{ color: "var(--danger)" }}>
+            {error}
+          </p>
+        )}
       </div>
 
       <div className="overflow-y-auto flex-1">
