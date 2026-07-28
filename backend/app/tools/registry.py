@@ -21,6 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.models import AssetType, ToolName
+from app.tools.reverse_dns import parse as reverse_dns_parse
+from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
 from app.tools.shodan import scan as shodan_scan
 from app.tools.whois import parse as whois_parse
@@ -55,10 +57,22 @@ def _resolve_domain_to_ip(domain: str) -> str | None:
 
 def _resolve_ip_to_domain(ip: str) -> str | None:
     try:
-        hostname, _, _ = socket.gethostbyaddr(ip)
-        return hostname
-    except OSError:
+        raw = reverse_dns_scan.run(ip)
+    except Exception:
         return None
+    hostnames = raw.get("hostnames") or []
+    if not hostnames:
+        return None
+    return _extract_registrable_domain_from_hostname(hostnames[0])
+
+
+def _extract_registrable_domain_from_hostname(hostname: str) -> str | None:
+    """Best-effort: turn 'mail.example.com' into 'example.com' so the
+    spawned WHOIS scan targets a real, registered domain rather than
+    a subdomain/hostname WHOIS has no record for."""
+    from app.tools.whois.scan import _to_registrable_domain
+
+    return _to_registrable_domain(hostname)
 
 
 TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
@@ -79,6 +93,15 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawns=ToolName.SHODAN,
         spawn_asset_type=AssetType.IP,
         resolve_spawn_value=_resolve_domain_to_ip,
+    ),
+    ToolName.REVERSE_DNS: ToolSpec(
+        tool=ToolName.REVERSE_DNS,
+        run=reverse_dns_scan.run,
+        parse=reverse_dns_parse.parse,
+        asset_types=frozenset({AssetType.IP}),
+        spawns=ToolName.WHOIS,
+        spawn_asset_type=AssetType.DOMAIN,
+        resolve_spawn_value=_resolve_ip_to_domain,
     ),
 }
 

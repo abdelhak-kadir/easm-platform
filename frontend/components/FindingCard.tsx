@@ -170,6 +170,32 @@ function DomainExpiryBody({ data }: BodyProps) {
   );
 }
 
+function ReverseDnsBody({ data }: BodyProps) {
+  return (
+    <div className="space-y-1.5">
+      <Field label="ip address">
+        {data.ip}
+        {data.ip && <CopyButton value={data.ip} />}
+      </Field>
+      {data.hostnames?.length > 0 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            hostnames
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {data.hostnames.map((h: string) => (
+              <span key={h} className="mono text-xs px-2 py-0.5 flex items-center gap-1"
+                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}>
+                {h}
+                <CopyButton value={h} />
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 // Ajoutez une entrée par finding_type ici pour un rendu soigné. Tout type
 // non enregistré retombe automatiquement sur le JSON brut (voir le
 // `Body ? <Body /> : <pre>...` plus bas) -- un nouvel outil backend
@@ -181,6 +207,7 @@ const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
   vulnerability: VulnerabilityBody,
   domain_registration: DomainRegistrationBody,
   domain_expiry: DomainExpiryBody,
+  reverse_dns: ReverseDnsBody,
 };
 
 export default function FindingCard({ finding }: { finding: Finding }) {

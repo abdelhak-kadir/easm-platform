@@ -33,6 +33,7 @@ class ToolName(enum.StrEnum):
     CENSYS = "censys"
     EMAIL_SECURITY = "email_security"
     HIBP = "hibp"
+    REVERSE_DNS = "reverse_dns"
 
 
 class Severity(enum.StrEnum):
