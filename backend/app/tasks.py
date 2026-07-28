@@ -23,7 +23,7 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     if not spec.spawns or not spec.resolve_spawn_value:
         return
 
-    spawn_value = spec.resolve_spawn_value(asset.value)
+    spawn_value = spec.resolve_spawn_value(db, asset.value)
     if not spawn_value:
         return
 

@@ -20,7 +20,9 @@ import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.models import AssetType, ToolName
+from sqlalchemy.orm import Session
+
+from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
@@ -39,10 +41,10 @@ class ToolSpec:
     # Chaining (all optional -- a tool that doesn't chain leaves these None):
     spawns: ToolName | None = None
     spawn_asset_type: AssetType | None = None
-    resolve_spawn_value: Callable[[str], str | None] | None = None
+    resolve_spawn_value: Callable[["Session", str], str | None] | None = None
 
 
-def _resolve_domain_to_ip(domain: str) -> str | None:
+def _resolve_domain_to_ip(db: Session, domain: str) -> str | None:
     """Best-effort DNS A-record lookup used to chain WHOIS -> Shodan.
 
     Returns None (rather than raising) on failure -- a domain with no
@@ -55,7 +57,26 @@ def _resolve_domain_to_ip(domain: str) -> str | None:
         return None
 
 
-def _resolve_ip_to_domain(ip: str) -> str | None:
+def _resolve_ip_to_domain(db: Session, ip: str) -> str | None:
+    asset = db.query(Asset).filter(Asset.value == ip, Asset.asset_type == AssetType.IP).first()
+    if asset:
+        cached = (
+            db.query(ScanResult)
+            .join(ScanJob)
+            .filter(
+                ScanJob.asset_id == asset.id,
+                ScanJob.tool == ToolName.REVERSE_DNS,
+                ScanJob.status == ScanStatus.COMPLETED,
+            )
+            .order_by(ScanResult.version.desc())
+            .first()
+        )
+        if cached:
+            hostnames = cached.raw_data.get("hostnames") or []
+            if hostnames:
+                return _extract_registrable_domain_from_hostname(hostnames[0])
+            return None  # completed but no PTR data -- don't retry over network
+
     try:
         raw = reverse_dns_scan.run(ip)
     except Exception:
