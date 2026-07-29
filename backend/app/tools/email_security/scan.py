@@ -1,5 +1,6 @@
 import dns.exception
 import dns.resolver
+
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
 
 _DKIM_SELECTORS = ["default", "selector1", "selector2", "google", "k1", "dkim", "mail"]
@@ -72,12 +73,13 @@ def _has_dkim_record(domain: str, selector: str) -> bool:
 
 
 def _txt_lookup(name: str, rtype: str = "TXT") -> list[str]:
-    """NoAnswer -> no such record, not an error (empty list). Anything
-    else (NXDOMAIN, Timeout, etc.) propagates to the caller, which
-    decides whether that's fatal in its own context."""
+    """NoAnswer -> no such record, not an error (empty list). NXDOMAIN is
+    intentionally NOT caught here -- callers need to decide whether a
+    non-existent domain is fatal (apex SPF lookup) or just means 'no
+    record' (DKIM selector probe)."""
     try:
         answer = dns.resolver.resolve(name, rtype)
-    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+    except dns.resolver.NoAnswer:
         return []
     return [str(rdata).strip('"') for rdata in answer]
 

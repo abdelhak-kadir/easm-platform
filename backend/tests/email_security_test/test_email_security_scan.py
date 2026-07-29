@@ -13,8 +13,15 @@ from app.tools.email_security.scan import (
 
 def _txt_answer(*strings_per_record: str) -> list[MagicMock]:
     """Build a fake dns.resolver.resolve(..., 'TXT') return value --
-    one rdata per record, each with a `.strings` tuple of byte chunks."""
-    return [MagicMock(strings=(s.encode(),)) for s in strings_per_record]
+    one rdata per record. Each mock's __str__ returns the TXT content,
+    matching what the real dns.rdata.__str__ does, so `str(rdata)` in
+    _txt_lookup() works without depending on dns.rdata internals."""
+    result = []
+    for s in strings_per_record:
+        mock_rdata = MagicMock()
+        mock_rdata.__str__ = MagicMock(return_value=s)
+        result.append(mock_rdata)
+    return result
 
 
 # ---------------------------------------------------------------------
@@ -69,9 +76,11 @@ def test_run_returns_none_spf_when_no_answer(mock_resolve):
 @patch("app.tools.email_security.scan.dns.resolver.resolve")
 def test_run_finds_dmarc_record(mock_resolve):
     def side_effect(name, rtype):
+        if name == "example.com":
+            raise dns.resolver.NoAnswer  # apex exists, no SPF
         if name == "_dmarc.example.com":
             return _txt_answer("v=DMARC1; p=reject; rua=mailto:d@example.com")
-        raise dns.resolver.NXDOMAIN
+        raise dns.resolver.NXDOMAIN  # DKIM selectors don't exist
 
     mock_resolve.side_effect = side_effect
     result = run("example.com")
@@ -82,7 +91,7 @@ def test_run_finds_dmarc_record(mock_resolve):
 @patch("app.tools.email_security.scan.dns.resolver.resolve")
 def test_run_returns_none_dmarc_when_subdomain_missing(mock_resolve):
     def side_effect(name, rtype):
-        raise dns.resolver.NXDOMAIN
+        raise dns.resolver.NoAnswer  # domain exists but has no TXT records
 
     mock_resolve.side_effect = side_effect
     result = run("example.com")
@@ -111,9 +120,11 @@ def test_run_raises_rate_limit_error_on_dmarc_timeout(mock_resolve):
 @patch("app.tools.email_security.scan.dns.resolver.resolve")
 def test_run_finds_dkim_selector(mock_resolve):
     def side_effect(name, rtype):
+        if name == "example.com":
+            raise dns.resolver.NoAnswer  # apex exists, no SPF
         if name == "default._domainkey.example.com":
             return _txt_answer("v=DKIM1; k=rsa; p=MIGfMA0GCSq...")
-        raise dns.resolver.NXDOMAIN
+        raise dns.resolver.NXDOMAIN  # _dmarc and other selectors missing
 
     mock_resolve.side_effect = side_effect
     result = run("example.com")
@@ -123,7 +134,7 @@ def test_run_finds_dkim_selector(mock_resolve):
 
 @patch("app.tools.email_security.scan.dns.resolver.resolve")
 def test_run_returns_empty_dkim_selectors_when_none_match(mock_resolve):
-    mock_resolve.side_effect = dns.resolver.NXDOMAIN
+    mock_resolve.side_effect = dns.resolver.NoAnswer  # domain exists, no DKIM
     result = run("example.com")
 
     assert result["dkim_selectors_found"] == []
