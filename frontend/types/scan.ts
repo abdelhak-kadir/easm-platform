@@ -54,3 +54,34 @@ export interface ScanStats {
   total_assets: number;
   total_scans: number;
 }
+
+// GET /scans/{job_id}/suggest-assets
+export interface SuggestedAsset {
+  ip: string;
+  org: string | null;
+  hostnames: string[];
+  ports: number[];
+  products: string[];
+  already_tracked: boolean;
+  is_source: boolean;
+}
+
+export interface SuggestAssetsResponse {
+  job_id: number;
+  by: string;
+  query_value: string;
+  is_shared_hosting_warning: boolean;
+  candidates: SuggestedAsset[];
+}
+
+// POST /scans/suggest-assets/accept
+export interface AcceptSuggestedResult {
+  asset_id: number;
+  value: string;
+  created: boolean;
+  queued: { task_id: string; job_id: number; tool: string }[];
+}
+
+export interface AcceptSuggestedResponse {
+  created: AcceptSuggestedResult[];
+}
