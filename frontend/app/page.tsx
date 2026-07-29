@@ -10,6 +10,7 @@ import StatsSummary from "../components/StatsSummary";
 import SeverityChart from "../components/SeverityChart";
 import RiskSummary from "../components/RiskSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
+import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
@@ -19,7 +20,7 @@ const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"]
 const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 export default function Home() {
-  const { assets, createAsset } = useAssets(API_BASE);
+  const { assets, createAsset, refresh: refreshAssets } = useAssets(API_BASE);
   const { jobs: fleetJobs, activeJobs: fleetActiveJobs, refresh: refreshFleet } = useFleetScans(API_BASE, assets);
 
   const [asset, setAsset] = useState<Asset | null>(null);
@@ -200,6 +201,17 @@ export default function Home() {
                   >
                     La vérification a échoué — consultez le statut ci-dessus ou réessayez.
                   </p>
+                )}
+
+                {job && job.tool === "shodan" && job.status === "completed" && (
+                  <SuggestAssetsPanel
+                    apiBase={API_BASE}
+                    jobId={job.id}
+                    onAssetsAccepted={() => {
+                      refreshAssets();
+                      setHistoryRefresh((k) => k + 1);
+                    }}
+                  />
                 )}
 
                 {results?.findings && (

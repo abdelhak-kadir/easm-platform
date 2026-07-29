@@ -2,8 +2,15 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
 
 from app.api.deps import DBSession
-from app.models import Asset, ScanJob, ScanResult, ScanStatus, ToolName
+from app.api.schemas import AcceptSuggestedAssets
+from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.registry import get_tool_spec, tools_for_asset_type
+from app.tools.shodan.org_search import (
+    ShodanSearchError,
+    is_likely_shared_hosting,
+    search_by_net,
+    search_by_org,
+)
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -44,6 +51,43 @@ def trigger_discovery(asset_id: int, db: DBSession):
         queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
 
     return {"asset_id": asset.id, "queued": queued}
+
+
+@router.post("/suggest-assets/accept")
+def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
+    """Turn a chosen subset of suggested IPs into real Assets and queue
+    discovery for each -- same tools-for-asset-type flow as
+    /scans/discover/{asset_id}, just for several assets at once."""
+    from app.tasks import run_tool_scan
+    from app.tools.registry import tools_for_asset_type
+
+    created = []
+    for value in payload.ips:
+        asset = (
+            db.query(Asset).filter(Asset.value == value, Asset.asset_type == AssetType.IP).first()
+        )
+        is_new = asset is None
+        if is_new:
+            asset = Asset(value=value, asset_type=AssetType.IP)
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+
+        queued = []
+        if is_new:
+            for spec in tools_for_asset_type(AssetType.IP):
+                job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+                db.add(job)
+                db.commit()
+                db.refresh(job)
+                task = run_tool_scan.delay(job.id)
+                queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
+
+        created.append(
+            {"asset_id": asset.id, "value": asset.value, "created": is_new, "queued": queued}
+        )
+
+    return {"created": created}
 
 
 @router.post("/{tool}/{asset_id}")
@@ -206,3 +250,62 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
         .all()
     )
     return [_serialize_job(db, j) for j in jobs]
+
+
+@router.get("/{job_id}/suggest-assets")
+def suggest_related_assets(job_id: int, db: DBSession, by: str = "org"):
+    """Suggest other IPs sharing this job's org or netblock, based on a
+    completed Shodan scan's host_info. Returns candidates for review --
+    does NOT create assets (org/net matches are too noisy to auto-chain
+    like WHOIS<->Shodan)."""
+    job = db.get(ScanJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+    if job.tool != ToolName.SHODAN:
+        raise HTTPException(status_code=400, detail="Job must be a Shodan scan")
+    if job.status != ScanStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job has not completed yet")
+
+    if by not in ("org", "net"):
+        raise HTTPException(status_code=400, detail="'by' must be 'org' or 'net'")
+
+    result = (
+        db.query(ScanResult)
+        .filter(ScanResult.scan_job_id == job_id)
+        .order_by(ScanResult.version.desc())
+        .first()
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="No scan result for this job")
+
+    raw = result.raw_data
+    org = raw.get("org")
+    ip = raw.get("ip_str")
+
+    try:
+        if by == "org":
+            if not org:
+                raise HTTPException(status_code=400, detail="This scan has no org to search by")
+            candidates = search_by_org(org)
+        else:
+            if not ip:
+                raise HTTPException(
+                    status_code=400, detail="This scan has no IP to derive a netblock from"
+                )
+            cidr = f"{ip}/24"
+            candidates = search_by_net(cidr)
+    except ShodanSearchError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    tracked_ips = {a.value for a in db.query(Asset).filter(Asset.asset_type == AssetType.IP).all()}
+    for c in candidates:
+        c["already_tracked"] = c["ip"] in tracked_ips
+        c["is_source"] = c["ip"] == ip
+
+    return {
+        "job_id": job_id,
+        "by": by,
+        "query_value": org if by == "org" else f"{ip}/24",
+        "is_shared_hosting_warning": by == "org" and is_likely_shared_hosting(org),
+        "candidates": candidates,
+    }
