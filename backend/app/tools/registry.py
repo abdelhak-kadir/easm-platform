@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
+from app.tools.email_security import parse as email_security_parse
+from app.tools.email_security import scan as email_security_scan
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
@@ -123,6 +125,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
+    ),
+    ToolName.EMAIL_SECURITY: ToolSpec(
+        tool=ToolName.EMAIL_SECURITY,
+        run=email_security_scan.run,
+        parse=email_security_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
     ),
 }
 

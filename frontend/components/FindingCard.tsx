@@ -196,6 +196,24 @@ function ReverseDnsBody({ data }: BodyProps) {
     </div>
   );
 }
+function EmailSecurityBody({ data }: BodyProps) {
+  return (
+    <div className="space-y-1.5">
+      <Field label="Vérification">{data.check?.toUpperCase()}</Field>
+      <Field label="Présent">{data.present ? "oui" : "non"}</Field>
+      {data.policy && <Field label="Politique">{data.policy}</Field>}
+      {data.record && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+            Enregistrement
+          </span>
+          <span className="mono text-xs break-all">{data.record}</span>
+        </div>
+      )}
+      {data.selectors?.length > 0 && <Field label="Sélecteurs">{data.selectors.join(", ")}</Field>}
+    </div>
+  );
+}
 // Ajoutez une entrée par finding_type ici pour un rendu soigné. Tout type
 // non enregistré retombe automatiquement sur le JSON brut (voir le
 // `Body ? <Body /> : <pre>...` plus bas) -- un nouvel outil backend
@@ -208,6 +226,7 @@ const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
   domain_registration: DomainRegistrationBody,
   domain_expiry: DomainExpiryBody,
   reverse_dns: ReverseDnsBody,
+  email_security: EmailSecurityBody,
 };
 
 export default function FindingCard({ finding }: { finding: Finding }) {
