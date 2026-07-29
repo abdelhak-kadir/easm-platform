@@ -12,6 +12,11 @@ export interface ScanJob {
   status: string;
   created_at?: string;
   completed_at?: string;
+  spawned_asset_id?: number | null;
+  spawned_asset_value?: string | null;
+  spawned_job_id?: number | null;
+  spawned_job_tool?: string | null;
+  spawned_job_status?: string | null;
 }
 
 export interface Finding {
@@ -27,4 +32,25 @@ export interface ScanResults {
   status: string;
   version: number | null;
   findings: Finding[];
+}
+
+
+export interface DashboardScan {
+  id: number;
+  tool: string;
+  status: string;
+  asset_id: number;
+  asset_value: string;
+  asset_type: string;
+  created_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string | null;
+}
+
+// GET /scans/stats
+export interface ScanStats {
+  by_status: Record<string, number>;
+  total_assets: number;
+  total_scans: number;
 }

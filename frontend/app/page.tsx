@@ -1,32 +1,60 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import TopNav from "../components/TopNav";
+import OverviewStrip from "../components/OverviewStrip";
 import AssetSearch from "../components/AssetSearch";
 import ScanHistory from "../components/ScanHistory";
 import FindingCard from "../components/FindingCard";
 import StatsSummary from "../components/StatsSummary";
+import SeverityChart from "../components/SeverityChart";
+import RiskSummary from "../components/RiskSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
+import { useAssets } from "../lib/useAssets";
+import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
+const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 export default function Home() {
+  const { assets, createAsset } = useAssets(API_BASE);
+  const { jobs: fleetJobs, activeJobs: fleetActiveJobs, refresh: refreshFleet } = useFleetScans(API_BASE, assets);
+
   const [asset, setAsset] = useState<Asset | null>(null);
   const [job, setJob] = useState<ScanJob | null>(null);
   const [results, setResults] = useState<ScanResults | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const [scanning, setScanning] = useState(false);
+  const [assetJobs, setAssetJobs] = useState<ScanJob[]>([]);
 
   const [search, setSearch] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set(ALL_SEVERITIES));
   const [activeType, setActiveType] = useState<string | null>(null);
 
+  const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
+
   function selectAsset(a: Asset) {
     setAsset(a);
     setJob(null);
     setResults(null);
+    setAssetJobs([]);
     resetFilters();
+  }
+
+  function selectAssetById(assetId: number) {
+    const found = assets.find((a) => a.id === assetId);
+    if (found) selectAsset(found);
+  }
+
+  // Jump to a spawned asset (e.g. the IP a WHOIS job resolved and
+  // queued Shodan for). Fetches the asset by id since it may not be
+  // in the loaded list yet.
+  async function jumpToAsset(assetId: number) {
+    const res = await fetch(`${API_BASE}/assets/${assetId}`);
+    if (!res.ok) return;
+    const data: Asset = await res.json();
+    selectAsset(data);
   }
 
   function resetFilters() {
@@ -45,12 +73,12 @@ export default function Home() {
 
   async function triggerScan() {
     if (!asset) return;
-    setScanning(true);
-    const res = await fetch(`${API_BASE}/scans/shodan/${asset.id}`, { method: "POST" });
-    const data = await res.json();
-    setJob({ id: data.job_id, status: "queued", tool: "shodan" });
+    await fetch(`${API_BASE}/scans/discover/${asset.id}`, { method: "POST" });
+    setJob(null);
     setResults(null);
     resetFilters();
+    setHistoryRefresh((k) => k + 1);
+    refreshFleet();
   }
 
   async function loadResults(jobId: number) {
@@ -67,24 +95,22 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!job || ["completed", "failed"].includes(job.status)) {
-      setScanning(false);
-      return;
-    }
-    const interval = setInterval(async () => {
-      const res = await fetch(`${API_BASE}/scans/${job.id}`);
-      const data = await res.json();
-      setJob(data);
-      if (data.status === "completed") {
-        await loadResults(job.id);
-        setHistoryRefresh((k) => k + 1);
-        setScanning(false);
-      } else if (data.status === "failed") {
-        setScanning(false);
-      }
+    if (!asset || !scanning) return;
+    const interval = setInterval(() => {
+      setHistoryRefresh((k) => k + 1);
     }, 2000);
     return () => clearInterval(interval);
-  }, [job]);
+  }, [asset, scanning]);
+
+  useEffect(() => {
+    if (!job) return;
+    const latest = assetJobs.find((j) => j.id === job.id);
+    if (latest && latest.status !== job.status) {
+      setJob(latest);
+      if (latest.status === "completed") loadResults(latest.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetJobs]);
 
   const typeOptions = useMemo(
     () => [...new Set((results?.findings || []).map((f) => f.finding_type))],
@@ -105,83 +131,113 @@ export default function Home() {
   }, [results, activeSeverities, activeType, search]);
 
   return (
-    <main className="max-w-3xl mx-auto mt-10 px-4 pb-20">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-2 h-2 rounded-full" style={{ background: "var(--signal)" }} />
-        <h1 className="mono text-sm uppercase tracking-[0.14em]" style={{ color: "var(--text)" }}>
-          EASM // ATTACK SURFACE SCANNER
-        </h1>
-      </div>
-      <p className="text-sm mb-8" style={{ color: "var(--muted)" }}>
-        Shodan reconnaissance module
-      </p>
+    <div className="min-h-screen">
+      <TopNav activeScanCount={fleetActiveJobs.length} />
 
-      <AssetSearch apiBase={API_BASE} onSelect={selectAsset} />
+      <main className="max-w-6xl mx-auto px-6 py-8">
+        <OverviewStrip
+          assets={assets}
+          jobs={fleetJobs}
+          activeCount={fleetActiveJobs.length}
+          onSelectAsset={selectAssetById}
+        />
 
-      {asset && (
-        <>
-          <div className={`panel flex items-center justify-between px-4 py-3 mb-4 ${scanning ? "scan-sweep" : ""}`}>
-            <div>
-              <div className="eyebrow">ACTIVE TARGET</div>
-              <p className="mono text-base mt-0.5">{asset.value}</p>
-            </div>
-            <button onClick={triggerScan} disabled={scanning} className="btn-primary">
-              {scanning ? "scanning…" : "run scan"}
-            </button>
-          </div>
-
-          <ScanHistory
-            apiBase={API_BASE}
-            asset={asset}
-            onSelectJob={selectPastJob}
-            refreshKey={historyRefresh}
-            activeJobId={job?.id}
-          />
-        </>
-      )}
-
-      {!asset && (
-        <p className="mono text-xs px-3 py-4" style={{ color: "var(--muted)", border: "1px dashed var(--hairline)" }}>
-          // no target selected — search or add one above
-        </p>
-      )}
-
-      {job && job.status === "failed" && (
-        <p
-          className="mono text-xs px-3 py-3 mb-4"
-          style={{ color: "#E0525C", border: "1px solid #E0525C33", background: "#E0525C0d" }}
-        >
-          // scan failed — check job status or try again
-        </p>
-      )}
-
-      {results?.findings && (
-        <section>
-          <StatsSummary findings={results.findings} />
-          <FindingsToolbar
-            search={search}
-            onSearchChange={setSearch}
-            activeSeverities={activeSeverities}
-            onToggleSeverity={toggleSeverity}
-            typeOptions={typeOptions}
-            activeType={activeType}
-            onTypeChange={setActiveType}
-            resultCount={filteredFindings.length}
-            totalCount={results.findings.length}
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
+          <AssetSearch
+            assets={assets}
+            selectedAssetId={asset?.id}
+            onSelect={selectAsset}
+            onCreate={createAsset}
           />
 
-          {filteredFindings.length > 0 ? (
-            filteredFindings.map((f) => <FindingCard key={f.id} finding={f} />)
-          ) : (
-            <p
-              className="mono text-xs px-3 py-4 text-center"
-              style={{ color: "var(--muted)", border: "1px dashed var(--hairline)" }}
-            >
-              // no findings match current filters
-            </p>
-          )}
-        </section>
-      )}
-    </main>
+          <section>
+            {!asset && (
+              <div
+                className="panel px-6 py-16 text-center"
+                style={{ color: "var(--muted)" }}
+              >
+                <p className="text-sm font-medium mb-1" style={{ color: "var(--text)" }}>
+                  Choisissez une cible à vérifier
+                </p>
+                <p className="text-sm max-w-sm mx-auto">
+                  Sélectionnez une cible dans la liste à gauche, ou ajoutez une adresse de site
+                  web ou une IP que vous souhaitez vérifier.
+                </p>
+              </div>
+            )}
+
+            {asset && (
+              <>
+                <div className={`panel flex items-center justify-between px-5 py-4 mb-5 ${scanning ? "scan-sweep" : ""}`}>
+                  <div>
+                    <p className="eyebrow mb-1">Cible en cours de vérification</p>
+                    <p className="mono text-base font-medium">{asset.value}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                      {scanning
+                        ? "Vérification de sécurité en cours — cela prend généralement une à deux minutes."
+                        : "Lancez une vérification pour détecter d'éventuelles failles de sécurité sur cette cible."}
+                    </p>
+                  </div>
+                  <button onClick={triggerScan} disabled={scanning} className="btn-primary shrink-0">
+                    {scanning ? "Vérification…" : "Vérifier maintenant"}
+                  </button>
+                </div>
+
+                <ScanHistory
+                  apiBase={API_BASE}
+                  asset={asset}
+                  onSelectJob={selectPastJob}
+                  refreshKey={historyRefresh}
+                  activeJobId={job?.id}
+                  onJobsLoaded={setAssetJobs}
+                  onJumpToAsset={jumpToAsset}
+                />
+
+                {job && job.status === "failed" && (
+                  <p
+                    className="text-sm px-4 py-3 mb-5 rounded-lg"
+                    style={{ color: "var(--danger)", border: "1px solid var(--danger)", background: "var(--danger-dim)" }}
+                  >
+                    La vérification a échoué — consultez le statut ci-dessus ou réessayez.
+                  </p>
+                )}
+
+                {results?.findings && (
+                  <section>
+                    <RiskSummary findings={results.findings} assetValue={asset.value} />
+                    <StatsSummary findings={results.findings} />
+                    {results.findings.length > 0 && <SeverityChart findings={results.findings} />}
+                    <FindingsToolbar
+                      search={search}
+                      onSearchChange={setSearch}
+                      activeSeverities={activeSeverities}
+                      onToggleSeverity={toggleSeverity}
+                      onSetSeverities={setActiveSeverities}
+                      typeOptions={typeOptions}
+                      activeType={activeType}
+                      onTypeChange={setActiveType}
+                      resultCount={filteredFindings.length}
+                      totalCount={results.findings.length}
+                    />
+
+                    {filteredFindings.length > 0 ? (
+                      filteredFindings.map((f) => <FindingCard key={f.id} finding={f} />)
+                    ) : (
+                      <p
+                        className="text-sm px-4 py-6 text-center rounded-lg"
+                        style={{ color: "var(--muted)", border: "1px dashed var(--hairline)" }}
+                      >
+                        Aucun résultat ne correspond aux filtres actuels.
+                      </p>
+                    )}
+                  </section>
+                )}
+              </>
+
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
   );
 }

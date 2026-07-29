@@ -33,6 +33,7 @@ class ToolName(enum.StrEnum):
     CENSYS = "censys"
     EMAIL_SECURITY = "email_security"
     HIBP = "hibp"
+    REVERSE_DNS = "reverse_dns"
 
 
 class Severity(enum.StrEnum):
@@ -53,7 +54,9 @@ class Asset(Base):
 
     __table_args__ = (UniqueConstraint("value", "asset_type", name="uq_asset_value_type"),)
 
-    scan_jobs: Mapped[list["ScanJob"]] = relationship(back_populates="asset")
+    scan_jobs: Mapped[list["ScanJob"]] = relationship(
+        back_populates="asset", foreign_keys="[ScanJob.asset_id]"
+    )
 
 
 class ScanJob(Base):
@@ -70,7 +73,10 @@ class ScanJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    asset: Mapped["Asset"] = relationship(back_populates="scan_jobs")
+    spawned_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True)
+    spawned_job_id: Mapped[int | None] = mapped_column(ForeignKey("scan_jobs.id"), nullable=True)
+
+    asset: Mapped["Asset"] = relationship(back_populates="scan_jobs", foreign_keys=[asset_id])
     results: Mapped[list["ScanResult"]] = relationship(back_populates="scan_job")
 
 

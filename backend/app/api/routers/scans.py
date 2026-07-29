@@ -1,26 +1,156 @@
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import func
 
 from app.api.deps import DBSession
 from app.models import Asset, ScanJob, ScanResult, ScanStatus, ToolName
+from app.tools.registry import get_tool_spec, tools_for_asset_type
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 
-@router.post("/shodan/{asset_id}")
-def trigger_shodan_scan(asset_id: int, db: DBSession):
+@router.post("/discover/{asset_id}")
+def trigger_discovery(asset_id: int, db: DBSession):
+    """Queue every tool registered for this asset's type.
+
+    This is the "Ordonnanceur dynamique" / "Sélection des outils selon
+    le type d'actif" entry point from the discovery flow -- the caller
+    doesn't pick a tool, the registry does, based on asset.asset_type.
+
+    NOTE: must stay registered before `/{tool}/{asset_id}` below. Both
+    are POST routes with a literal-or-variable first segment plus
+    `asset_id`, so route registration order decides whether "discover"
+    resolves here or gets validated (and rejected) as a ToolName.
+    """
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
 
-    job = ScanJob(asset_id=asset.id, tool=ToolName.SHODAN, status=ScanStatus.PENDING)
+    specs = tools_for_asset_type(asset.asset_type)
+    if not specs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No tools registered for asset type '{asset.asset_type}'",
+        )
+
+    from app.tasks import run_tool_scan
+
+    queued = []
+    for spec in specs:
+        job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        task = run_tool_scan.delay(job.id)
+        queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
+
+    return {"asset_id": asset.id, "queued": queued}
+
+
+@router.post("/{tool}/{asset_id}")
+def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    try:
+        spec = get_tool_spec(tool)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    # trigger_discovery (above) only ever queues tools that
+    # tools_for_asset_type() says apply to the asset -- this endpoint
+    # bypasses that selection (the caller names the tool directly), so
+    # it needs its own check or a mismatched pairing like
+    # (shodan, a domain asset) can be queued and silently "work"
+    # (Shodan resolves hostnames fine) even though it's not a valid
+    # combination per the registry.
+    if asset.asset_type not in spec.asset_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tool '{tool}' does not apply to asset type '{asset.asset_type}'",
+        )
+
+    job = ScanJob(asset_id=asset.id, tool=tool, status=ScanStatus.PENDING)
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    from app.tasks import run_shodan_scan
+    from app.tasks import run_tool_scan
 
-    task = run_shodan_scan.delay(job.id)
-    return {"task_id": task.id, "job_id": job.id, "status": "queued"}
+    task = run_tool_scan.delay(job.id)
+    return {"task_id": task.id, "job_id": job.id, "status": "queued", "tool": tool}
+
+
+def _serialize_job(db: DBSession, job: ScanJob) -> dict:
+    """Shared shape for a job, including its chained-scan info if any
+    (see ToolSpec.spawns / app.tasks._spawn_chained_scan)."""
+    spawned_job = db.get(ScanJob, job.spawned_job_id) if job.spawned_job_id else None
+    spawned_asset = db.get(Asset, job.spawned_asset_id) if job.spawned_asset_id else None
+    return {
+        "id": job.id,
+        "tool": job.tool,
+        "status": job.status,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "completed_at": job.completed_at,
+        "error_message": job.error_message,
+        "spawned_asset_id": job.spawned_asset_id,
+        "spawned_asset_value": spawned_asset.value if spawned_asset else None,
+        "spawned_job_id": job.spawned_job_id,
+        "spawned_job_tool": spawned_job.tool if spawned_job else None,
+        "spawned_job_status": spawned_job.status if spawned_job else None,
+    }
+
+
+def _serialize_job_with_asset(db: DBSession, job: ScanJob) -> dict:
+    """Same as `_serialize_job`, plus the *owning* asset's identity.
+
+    Used by the dashboard feed (`GET /scans`), which spans every asset
+    at once, so each row needs to say which target it belongs to --
+    unlike `_serialize_job`, which is used from an asset-scoped context
+    where the caller already knows that.
+    """
+    asset = db.get(Asset, job.asset_id)
+    return {
+        **_serialize_job(db, job),
+        "asset_id": job.asset_id,
+        "asset_value": asset.value if asset else None,
+        "asset_type": asset.asset_type if asset else None,
+    }
+
+
+@router.get("")
+def list_scans(db: DBSession, limit: int = 50, status: ScanStatus | None = None):
+    """Recent scan jobs across ALL assets, newest first -- the feed the
+    dashboard uses to show "what's running / what just happened"
+    without requiring a target to be selected first.
+
+    NOTE: registered before `/{job_id}` below (same reasoning as
+    `trigger_discovery` above) -- otherwise `/scans/stats` would be
+    swallowed by `/{job_id}` and 422 trying to parse "stats" as an int.
+    """
+    query = db.query(ScanJob).order_by(ScanJob.created_at.desc())
+    if status is not None:
+        query = query.filter(ScanJob.status == status)
+    jobs = query.limit(limit).all()
+    return [_serialize_job_with_asset(db, j) for j in jobs]
+
+
+@router.get("/stats")
+def scan_stats(db: DBSession):
+    """Counts for the dashboard's summary strip: targets tracked, and
+    scan jobs grouped by status (pending/running/completed/failed).
+    """
+    rows = db.query(ScanJob.status, func.count(ScanJob.id)).group_by(ScanJob.status).all()
+    by_status = {s.value: 0 for s in ScanStatus}
+    for status, count in rows:
+        by_status[status] = count
+
+    return {
+        "by_status": by_status,
+        "total_assets": db.query(Asset).count(),
+        "total_scans": sum(by_status.values()),
+    }
 
 
 @router.get("/{job_id}")
@@ -28,14 +158,7 @@ def get_scan_job(job_id: int, db: DBSession):
     job = db.get(ScanJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Scan job not found")
-    return {
-        "id": job.id,
-        "status": job.status,
-        "tool": job.tool,
-        "started_at": job.started_at,
-        "completed_at": job.completed_at,
-        "error_message": job.error_message,
-    }
+    return _serialize_job(db, job)
 
 
 @router.get("/{job_id}/results")
@@ -82,13 +205,4 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
         .order_by(ScanJob.created_at.desc())
         .all()
     )
-    return [
-        {
-            "id": j.id,
-            "tool": j.tool,
-            "status": j.status,
-            "created_at": j.created_at,
-            "completed_at": j.completed_at,
-        }
-        for j in jobs
-    ]
+    return [_serialize_job(db, j) for j in jobs]

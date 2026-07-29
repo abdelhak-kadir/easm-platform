@@ -19,10 +19,26 @@ def parse(raw_data: dict) -> list[dict]:
 
     findings.extend(_parse_open_port(service) for service in raw_data.get("data", []))
 
-    for cve_id, vuln_info in raw_data.get("vulns", {}).items():
+    for cve_id, vuln_info in _iter_vulns(raw_data.get("vulns")):
         findings.append(_parse_vulnerability(cve_id, vuln_info))
 
     return findings
+
+
+def _iter_vulns(vulns) -> list[tuple[str, dict]]:
+    """Shodan's `vulns` field is normally a dict of
+    `{cve_id: {cvss, summary}}`, but for some hosts it comes back as a
+    bare list of CVE ID strings instead (no CVSS/summary attached).
+    Normalize both shapes to (cve_id, info_dict) pairs so downstream
+    parsing doesn't care which one Shodan sent.
+    """
+    if not vulns:
+        return []
+    if isinstance(vulns, dict):
+        return list(vulns.items())
+    if isinstance(vulns, list):
+        return [(cve_id, {}) for cve_id in vulns]
+    return []
 
 
 def _parse_host_info(raw_data: dict) -> dict:
