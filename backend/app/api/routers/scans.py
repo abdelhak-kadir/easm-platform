@@ -53,6 +53,43 @@ def trigger_discovery(asset_id: int, db: DBSession):
     return {"asset_id": asset.id, "queued": queued}
 
 
+@router.post("/suggest-assets/accept")
+def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
+    """Turn a chosen subset of suggested IPs into real Assets and queue
+    discovery for each -- same tools-for-asset-type flow as
+    /scans/discover/{asset_id}, just for several assets at once."""
+    from app.tasks import run_tool_scan
+    from app.tools.registry import tools_for_asset_type
+
+    created = []
+    for value in payload.ips:
+        asset = (
+            db.query(Asset).filter(Asset.value == value, Asset.asset_type == AssetType.IP).first()
+        )
+        is_new = asset is None
+        if is_new:
+            asset = Asset(value=value, asset_type=AssetType.IP)
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+
+        queued = []
+        if is_new:
+            for spec in tools_for_asset_type(AssetType.IP):
+                job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+                db.add(job)
+                db.commit()
+                db.refresh(job)
+                task = run_tool_scan.delay(job.id)
+                queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
+
+        created.append(
+            {"asset_id": asset.id, "value": asset.value, "created": is_new, "queued": queued}
+        )
+
+    return {"created": created}
+
+
 @router.post("/{tool}/{asset_id}")
 def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
     asset = db.get(Asset, asset_id)
@@ -272,40 +309,3 @@ def suggest_related_assets(job_id: int, db: DBSession, by: str = "org"):
         "is_shared_hosting_warning": by == "org" and is_likely_shared_hosting(org),
         "candidates": candidates,
     }
-
-
-@router.post("/suggest-assets/accept")
-def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
-    """Turn a chosen subset of suggested IPs into real Assets and queue
-    discovery for each -- same tools-for-asset-type flow as
-    /scans/discover/{asset_id}, just for several assets at once."""
-    from app.tasks import run_tool_scan
-    from app.tools.registry import tools_for_asset_type
-
-    created = []
-    for value in payload.ips:
-        asset = (
-            db.query(Asset).filter(Asset.value == value, Asset.asset_type == AssetType.IP).first()
-        )
-        is_new = asset is None
-        if is_new:
-            asset = Asset(value=value, asset_type=AssetType.IP)
-            db.add(asset)
-            db.commit()
-            db.refresh(asset)
-
-        queued = []
-        if is_new:
-            for spec in tools_for_asset_type(AssetType.IP):
-                job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
-                db.add(job)
-                db.commit()
-                db.refresh(job)
-                task = run_tool_scan.delay(job.id)
-                queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
-
-        created.append(
-            {"asset_id": asset.id, "value": asset.value, "created": is_new, "queued": queued}
-        )
-
-    return {"created": created}
