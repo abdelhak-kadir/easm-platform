@@ -2,6 +2,7 @@ import ipaddress
 import os
 import socket
 
+import requests
 import shodan
 
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
@@ -34,7 +35,7 @@ def run(asset_value: str) -> dict:
 
     api = shodan.Shodan(api_key)
     try:
-        return api.host(ip)
+        host_data = api.host(ip)
     except shodan.APIError as e:
         message = str(e).lower()
         if "no information available" in message:
@@ -42,6 +43,11 @@ def run(asset_value: str) -> dict:
         if "rate limit" in message:
             raise ShodanRateLimitError(f"Shodan rate limit reached for {ip}: {e}") from e
         raise ShodanScanError(f"Shodan lookup failed for {ip}: {e}") from e
+
+    if isinstance(host_data.get("vulns"), list):
+        host_data["vulns"] = _enrich_vulns_with_cvss(host_data["vulns"])
+
+    return host_data
 
 
 def _resolve_to_ip(hostname: str) -> str:
@@ -57,3 +63,22 @@ def _is_ip(value: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _enrich_vulns_with_cvss(vulns: list[str]) -> dict:
+    """When Shodan's host() response gives vulns as bare CVE ID strings
+    (lower API tier), fetch real CVSS scores from Shodan's free public
+    CVEDB so severity isn't lost to a Low-severity default."""
+    enriched = {}
+    for cve_id in vulns:
+        try:
+            resp = requests.get(f"https://cvedb.shodan.io/cve/{cve_id}", timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+            enriched[cve_id] = {
+                "cvss": data.get("cvss") or 0.0,
+                "summary": data.get("summary", ""),
+            }
+        except requests.RequestException:
+            enriched[cve_id] = {"cvss": 0.0, "summary": ""}
+    return enriched
