@@ -29,6 +29,8 @@ from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
 from app.tools.shodan import scan as shodan_scan
+from app.tools.theharvester import parse as theharvester_parse
+from app.tools.theharvester import scan as theharvester_scan
 from app.tools.whois import parse as whois_parse
 from app.tools.whois import scan as whois_scan
 
@@ -125,6 +127,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
+    ),
+    ToolName.THEHARVESTER: ToolSpec(
+        tool=ToolName.THEHARVESTER,
+        run=theharvester_scan.run,
+        parse=theharvester_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
     ),
     ToolName.EMAIL_SECURITY: ToolSpec(
         tool=ToolName.EMAIL_SECURITY,

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from celery.exceptions import Retry
@@ -8,6 +9,8 @@ from app.models import Asset, Finding, ScanJob, ScanResult, ScanStatus
 from app.tools.base import ToolNoDataError, ToolRateLimitError
 from app.tools.registry import ToolSpec, get_tool_spec
 
+_logger = logging.getLogger(__name__)
+
 
 def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     """If `spec` declares a chained tool, resolve the spawn value from
@@ -15,10 +18,10 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     it. No-op if the spec doesn't chain or resolution fails/returns
     nothing (e.g. domain has no A record).
 
-    Called for BOTH the "completed" and "completed_no_data" outcomes --
-    DNS resolution doesn't depend on WHOIS actually having a record for
-    the domain, so a chain-eligible tool should still try even when its
-    own lookup came back empty.
+    Called for EVERY final outcome (completed, completed_no_data, AND
+    failure) -- DNS resolution doesn't depend on WHOIS actually having a
+    record for the domain, so a chain-eligible tool should still try even
+    when its own lookup came back empty or errored out.
     """
     if not spec.spawns or not spec.resolve_spawn_value:
         return
@@ -70,6 +73,8 @@ def run_tool_scan(self, job_id: int):
     TOOL_REGISTRY entry.
     """
     db = SessionLocal()
+    job = asset = spec = None
+    should_chain = True  # reset on Retry; all other outcomes chain
     try:
         job = db.get(ScanJob, job_id)
         if job is None:
@@ -88,14 +93,13 @@ def run_tool_scan(self, job_id: int):
         try:
             raw_data = spec.run(asset.value)
         except ToolRateLimitError as e:
-            # Transient — let Celery retry with backoff instead of failing the job.
+            should_chain = False  # will retry — chain on the final outcome instead
             raise self.retry(exc=e) from e
         except ToolNoDataError as e:
             job.status = ScanStatus.COMPLETED
             job.error_message = str(e)[:1000]
             job.completed_at = datetime.now(UTC)
             db.commit()
-            _spawn_chained_scan(db, job, asset, spec)
             return {"job_id": job.id, "status": "completed_no_data"}
 
         last_result = (
@@ -119,11 +123,10 @@ def run_tool_scan(self, job_id: int):
         job.completed_at = datetime.now(UTC)
         db.commit()
 
-        _spawn_chained_scan(db, job, asset, spec)
-
         return {"job_id": job.id, "status": "completed", "version": next_version}
 
     except Retry:
+        should_chain = False
         raise
     except Exception as e:
         job = db.get(ScanJob, job_id)
@@ -134,4 +137,15 @@ def run_tool_scan(self, job_id: int):
             db.commit()
         raise
     finally:
+        if should_chain and job is not None and asset is not None and spec is not None:
+            try:
+                _spawn_chained_scan(db, job, asset, spec)
+            except Exception:
+                _logger.warning(
+                    "Chained scan dispatch failed for job %d (tool=%s → %s)",
+                    job.id,
+                    spec.tool,
+                    spec.spawns,
+                    exc_info=True,
+                )
         db.close()
