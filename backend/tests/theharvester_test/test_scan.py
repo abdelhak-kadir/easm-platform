@@ -160,6 +160,18 @@ def test_run_raises_rate_limit_on_429(mock_get):
 
 
 @patch("app.tools.theharvester.scan.requests.get")
+def test_run_raises_no_data_on_crtsh_404(mock_get):
+    """crt.sh returns bare 404 (not an empty array) when a domain has
+    no certs — must be treated as no-data, not a scan failure."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    mock_get.side_effect = requests.HTTPError("404 Client Error", response=mock_resp)
+
+    with pytest.raises(TheHarvesterNoDataError, match="No public data found"):
+        run("elysec-int.com")
+
+
+@patch("app.tools.theharvester.scan.requests.get")
 def test_run_raises_rate_limit_on_502(mock_get):
     """5xx errors from CRT.sh are transient server failures — retryable."""
     mock_resp = MagicMock()

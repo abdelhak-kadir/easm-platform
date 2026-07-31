@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
 
 from app.api.deps import DBSession
-from app.api.schemas import AcceptSuggestedAssets
+from app.api.schemas import AcceptDiscoveredAssets, AcceptSuggestedAssets
 from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.registry import get_tool_spec, tools_for_asset_type
 from app.tools.shodan.org_search import (
@@ -76,6 +76,55 @@ def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
         queued = []
         if is_new:
             for spec in tools_for_asset_type(AssetType.IP):
+                job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+                db.add(job)
+                db.commit()
+                db.refresh(job)
+                task = run_tool_scan.delay(job.id)
+                queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
+
+        created.append(
+            {"asset_id": asset.id, "value": asset.value, "created": is_new, "queued": queued}
+        )
+
+    return {"created": created}
+
+
+@router.post("/suggest-discovered/accept")
+def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
+    """Turn a chosen subset of theHarvester-discovered hosts into real
+    Assets and queue discovery for each -- same tools-for-asset-type
+    flow as /scans/discover/{asset_id} and /scans/suggest-assets/accept,
+    just sourced from crt.sh-derived hostnames instead of Shodan
+    org/net matches.
+    """
+    if payload.asset_type != AssetType.SUBDOMAIN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"asset_type '{payload.asset_type}' is not yet supported "
+            "for discovered-asset acceptance",
+        )
+
+    from app.tasks import run_tool_scan
+    from app.tools.registry import tools_for_asset_type
+
+    created = []
+    for value in payload.values:
+        asset = (
+            db.query(Asset)
+            .filter(Asset.value == value, Asset.asset_type == payload.asset_type)
+            .first()
+        )
+        is_new = asset is None
+        if is_new:
+            asset = Asset(value=value, asset_type=payload.asset_type)
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+
+        queued = []
+        if is_new:
+            for spec in tools_for_asset_type(payload.asset_type):
                 job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
                 db.add(job)
                 db.commit()
@@ -250,6 +299,49 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
         .all()
     )
     return [_serialize_job(db, j) for j in jobs]
+
+
+@router.get("/{job_id}/suggest-discovered")
+def suggest_discovered_assets(job_id: int, db: DBSession, category: str = "hosts"):
+    """Surface theHarvester's discovered hostnames as candidates for
+    promotion to real, trackable SUBDOMAIN Assets. Returns candidates
+    for review -- does NOT create assets (a wildcard cert can leak
+    unrelated hostnames, so this stays human-gated like the Shodan
+    org/net suggestions)."""
+    if category != "hosts":
+        raise HTTPException(
+            status_code=400,
+            detail="Only category='hosts' is currently supported "
+            "(email-derived assets need AssetType.EMAIL, not yet implemented)",
+        )
+
+    job = db.get(ScanJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+    if job.tool != ToolName.THEHARVESTER:
+        raise HTTPException(status_code=400, detail="Job must be a theHarvester scan")
+    if job.status != ScanStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job has not completed yet")
+
+    result = (
+        db.query(ScanResult)
+        .filter(ScanResult.scan_job_id == job_id)
+        .order_by(ScanResult.version.desc())
+        .first()
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="No scan result for this job")
+
+    hosts = result.raw_data.get("hosts", [])
+    tracked = {
+        a.value for a in db.query(Asset).filter(Asset.asset_type == AssetType.SUBDOMAIN).all()
+    }
+
+    return {
+        "job_id": job_id,
+        "category": category,
+        "candidates": [{"value": h, "already_tracked": h in tracked} for h in hosts],
+    }
 
 
 @router.get("/{job_id}/suggest-assets")

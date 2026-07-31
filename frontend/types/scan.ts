@@ -85,3 +85,27 @@ export interface AcceptSuggestedResult {
 export interface AcceptSuggestedResponse {
   created: AcceptSuggestedResult[];
 }
+
+// GET /scans/{job_id}/suggest-discovered
+export interface DiscoveredCandidate {
+  value: string;
+  already_tracked: boolean;
+}
+
+export interface SuggestDiscoveredResponse {
+  job_id: number;
+  category: string;
+  candidates: DiscoveredCandidate[];
+}
+
+// POST /scans/suggest-discovered/accept
+export interface AcceptDiscoveredResult {
+  asset_id: number;
+  value: string;
+  created: boolean;
+  queued: { task_id: string; job_id: number; tool: string }[];
+}
+
+export interface AcceptDiscoveredResponse {
+  created: AcceptDiscoveredResult[];
+}

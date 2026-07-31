@@ -94,6 +94,13 @@ def _query_crtsh(
         ) from None
     except requests.HTTPError as e:
         status = e.response.status_code if e.response is not None else 0
+        if status == 404:
+            # crt.sh returns bare 404 (not an empty JSON array) when a
+            # domain has no certificates in the transparency log — that's
+            # a legitimate "nothing found" outcome, not a failure. Leave
+            # hosts/ips/emails empty; run()'s existing empty-result check
+            # turns that into TheHarvesterNoDataError on its own.
+            return
         if status == 429:
             raise TheHarvesterRateLimitError(f"CRT.sh rate-limited for {domain}") from e
         if status >= 500:

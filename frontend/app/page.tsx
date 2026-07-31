@@ -11,6 +11,7 @@ import SeverityChart from "../components/SeverityChart";
 import RiskSummary from "../components/RiskSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
 import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
+import SuggestHostsPanel from "../components/SuggestHostsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
@@ -205,6 +206,17 @@ export default function Home() {
 
                 {job && job.tool === "shodan" && job.status === "completed" && (
                   <SuggestAssetsPanel
+                    apiBase={API_BASE}
+                    jobId={job.id}
+                    onAssetsAccepted={() => {
+                      refreshAssets();
+                      setHistoryRefresh((k) => k + 1);
+                    }}
+                  />
+                )}
+
+                {job && job.tool === "theharvester" && job.status === "completed" && (
+                  <SuggestHostsPanel
                     apiBase={API_BASE}
                     jobId={job.id}
                     onAssetsAccepted={() => {
