@@ -46,6 +46,11 @@ def run(asset_value: str) -> dict:
     """
     domain = asset_value.strip().lower().rstrip(".")
 
+    # Wildcard cert entries (e.g. *.example.com) aren't real queryable
+    # domains — crt.sh hangs or returns garbage when fed a literal `*`.
+    if domain.startswith("*.") or "*" in domain:
+        raise TheHarvesterNoDataError(f"Wildcard domains are not queryable: {domain}")
+
     all_hosts: set[str] = set()
     all_ips: set[str] = set()
     all_emails: set[str] = set()
@@ -124,6 +129,8 @@ def _query_crtsh(
                 name = name.strip().lower().rstrip(".")
                 if not name or name == domain:
                     continue
+                if name.startswith("*.") or "*" in name:
+                    continue  # wildcard cert — not a real queryable hostname
                 if name.endswith(f".{domain}") or name == domain:
                     hosts.add(name)
                 elif _IP_RE.fullmatch(name):
