@@ -27,13 +27,16 @@ class ScanStatus(enum.StrEnum):
 
 class ToolName(enum.StrEnum):
     WHOIS = "whois"
+    AMASS = "amass"
     THEHARVESTER = "theharvester"
+    HTTPX = "httpx"
     NMAP = "nmap"
     SHODAN = "shodan"
     CENSYS = "censys"
     EMAIL_SECURITY = "email_security"
     HIBP = "hibp"
     REVERSE_DNS = "reverse_dns"
+    SUBFINDER = "subfinder"
 
 
 class Severity(enum.StrEnum):

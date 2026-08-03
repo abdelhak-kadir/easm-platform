@@ -23,12 +23,20 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
+from app.tools.amass import parse as amass_parse
+from app.tools.amass import scan as amass_scan
 from app.tools.email_security import parse as email_security_parse
 from app.tools.email_security import scan as email_security_scan
+from app.tools.httpx import parse as httpx_parse
+from app.tools.httpx import scan as httpx_scan
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
 from app.tools.shodan import scan as shodan_scan
+from app.tools.subfinder import parse as subfinder_parse
+from app.tools.subfinder import scan as subfinder_scan
+from app.tools.theharvester import parse as theharvester_parse
+from app.tools.theharvester import scan as theharvester_scan
 from app.tools.whois import parse as whois_parse
 from app.tools.whois import scan as whois_scan
 
@@ -126,11 +134,35 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
     ),
+    ToolName.THEHARVESTER: ToolSpec(
+        tool=ToolName.THEHARVESTER,
+        run=theharvester_scan.run,
+        parse=theharvester_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
     ToolName.EMAIL_SECURITY: ToolSpec(
         tool=ToolName.EMAIL_SECURITY,
         run=email_security_scan.run,
         parse=email_security_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.SUBFINDER: ToolSpec(
+        tool=ToolName.SUBFINDER,
+        run=subfinder_scan.run,
+        parse=subfinder_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.AMASS: ToolSpec(
+        tool=ToolName.AMASS,
+        run=amass_scan.run,
+        parse=amass_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.HTTPX: ToolSpec(
+        tool=ToolName.HTTPX,
+        run=httpx_scan.run,
+        parse=httpx_parse.parse,
+        asset_types=frozenset({AssetType.SUBDOMAIN, AssetType.IP}),
     ),
 }
 

@@ -214,6 +214,47 @@ function EmailSecurityBody({ data }: BodyProps) {
     </div>
   );
 }
+const CATEGORY_LABEL: Record<string, string> = {
+  emails: "E-mails",
+  hosts: "Noms d'hôte",
+  ips: "Adresses IP",
+  urls: "URLs",
+};
+
+function DiscoveredAssetsBody({ data }: BodyProps) {
+  const items: string[] = data.items || [];
+  const category = data.category || "";
+  const label = CATEGORY_LABEL[category] || category;
+
+  return (
+    <div className="space-y-1.5">
+      <Field label="Catégorie">{label}</Field>
+      <Field label="Trouvés">{items.length}</Field>
+      <div className="flex items-start gap-2 text-sm">
+        <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+          Éléments
+        </span>
+        <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+          {items.slice(0, 50).map((item: string) => (
+            <span
+              key={item}
+              className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
+              style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
+            >
+              {item}
+              <CopyButton value={item} />
+            </span>
+          ))}
+          {items.length > 50 && (
+            <span className="text-xs" style={{ color: "var(--muted)" }}>
+              +{items.length - 50} autres
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 // Ajoutez une entrée par finding_type ici pour un rendu soigné. Tout type
 // non enregistré retombe automatiquement sur le JSON brut (voir le
 // `Body ? <Body /> : <pre>...` plus bas) -- un nouvel outil backend
@@ -227,6 +268,7 @@ const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
   domain_expiry: DomainExpiryBody,
   reverse_dns: ReverseDnsBody,
   email_security: EmailSecurityBody,
+  discovered_assets: DiscoveredAssetsBody,
 };
 
 export default function FindingCard({ finding }: { finding: Finding }) {

@@ -10,3 +10,8 @@ class AssetCreate(BaseModel):
 
 class AcceptSuggestedAssets(BaseModel):
     ips: list[str]
+
+
+class AcceptDiscoveredAssets(BaseModel):
+    values: list[str]
+    asset_type: AssetType = AssetType.SUBDOMAIN
