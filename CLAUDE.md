@@ -83,7 +83,7 @@ Handled generically in `app/tasks.py::_spawn_chained_scan`.
 | Shodan | ✅ Complete | IP | Chains to WHOIS via rDNS/PTR cache |
 | Reverse DNS | ✅ Complete | IP | Internal + chaining support; chains to WHOIS |
 | Email Security | ✅ Complete | Domain, Subdomain | SPF/DKIM/DMARC checks |
-| theHarvester | 🔧 In Progress | Domain, Subdomain | On branch `tools/theharvester` |
+| theHarvester | ✅ Complete | Domain, Subdomain | crt.sh API + CLI subprocess; human-gated host acceptance via SuggestHostsPanel |
 | Nmap | ⬜ Planned | IP | Will need privileged container |
 | Censys | ⬜ Planned | IP | |
 | HIBP | ⬜ Planned | Email | |
@@ -96,6 +96,11 @@ A completed tool can spawn exactly one follow-up tool on a derived asset:
 - WHOIS resolves domain → IP → auto-queues Shodan
 - Shodan resolves IP → domain (cached rDNS) → auto-queues WHOIS
 - Reverse DNS resolves IP → domain → auto-queues WHOIS
+
+theHarvester uses a **human-gated** acceptance pattern instead of auto-chaining:
+- Discovered subdomains/hosts are surfaced via `GET /scans/{job_id}/suggest-discovered`
+- The user reviews and accepts candidates via `POST /scans/suggest-discovered/accept`
+- Accepted hosts become SUBDOMAIN Assets and trigger the full tool suite
 
 ### Flow
 
@@ -138,6 +143,10 @@ spawning N follow-ups per round until no new PENDING assets remain.
 | `GET /scans/{job_id}` | Job status + chain metadata |
 | `GET /scans/{job_id}/results` | Latest ScanResult + Findings |
 | `GET /scans/asset/{asset_id}` | Full job history for one asset |
+| `POST /scans/suggest-discovered/accept` | Accept theHarvester-discovered subdomains as Assets |
+| `GET /scans/{job_id}/suggest-discovered` | List theHarvester-discovered hosts for review |
+| `GET /scans/{job_id}/suggest-assets` | Shodan org/net IP suggestions for review |
+| `POST /scans/suggest-assets/accept` | Accept Shodan-suggested IPs as Assets |
 | `GET /scans`, `GET /scans/stats` | Dashboard feed + aggregates |
 
 ⚠️ Route ordering matters: `/scans/discover/…` and `/scans/stats` must be registered
@@ -192,15 +201,15 @@ docker compose up -d        # postgres, redis, backend, celery_worker
 | No per-tool Docker containers yet | Premature until Nmap needs raw-socket isolation |
 | `ipaddress.ip_address()` for type inference | Server-side only — never trust client type hints |
 | JSONB not separate document store | Queryability of relational + flexibility of unstructured in one DB |
+| theHarvester CLI via subprocess not import | Avoids asyncio/Celery pool conflict; timeout isolation; graceful fallback to crt.sh-only |
 
 ---
 
 ## Remaining Work (priority order)
 
-1. **theHarvester** integration (current branch `tools/theharvester`)
-2. Nmap, Censys, HIBP — completing the tool suite
-3. Full wave-based orchestration (generalize chaining)
-4. Result diffing between ScanResult versions
-5. Risk scoring / CVE correlation beyond Shodan CVSS passthrough
-6. Frontend containerization + frontend test suite
-7. Benchmark run against reNgine and EasyEASM
+1. Nmap, Censys, HIBP — completing the tool suite
+2. Full wave-based orchestration (generalize chaining — replace point-to-point with schedule_round/collect_round)
+3. Result diffing between ScanResult versions
+4. Risk scoring / CVE correlation beyond Shodan CVSS passthrough
+5. Frontend containerization + frontend test suite
+6. Benchmark run against reNgine and EasyEASM
