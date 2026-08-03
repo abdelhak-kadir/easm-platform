@@ -1,63 +1,87 @@
+"use client";
+
+import { useState } from "react";
 import { Finding } from "../types/scan";
 import SeverityBadge, { SEVERITY_HEX } from "./SeverityBadge";
 import CopyButton from "./CopyButton";
 import { findingTypeLabel, FINDING_TYPE_DESCRIPTION, SEVERITY_EXPLAINER } from "../lib/labels";
 
-interface BodyProps {
-  data: Record<string, any>;
-}
+/* ── shared chip / field atoms ────────────────────────────────────────── */
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="text-xs w-28 shrink-0" style={{ color: "var(--muted)" }}>
+      <span
+        className="text-[11px] w-[6.5rem] shrink-0 font-medium uppercase tracking-[0.04em]"
+        style={{ color: "var(--text-secondary)" }}
+      >
         {label}
       </span>
-      <span className="mono">{children}</span>
+      <span className="font-medium" style={{ color: "var(--text-primary)" }}>
+        {children}
+      </span>
     </div>
   );
 }
 
-function HostInfoBody({ data }: BodyProps) {
+function Chip({ value, copy }: { value: string; copy?: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded-md font-medium"
+      style={{
+        background: "var(--panel-dim)",
+        border: "1px solid var(--border)",
+        color: "var(--text-primary)",
+      }}
+    >
+      {value}
+      {copy && <CopyButton value={value} />}
+    </span>
+  );
+}
+
+/* ── body renderers per finding_type ─────────────────────────────────── */
+
+function HostInfoBody({ data }: Record<string, any>) {
   return (
     <div className="space-y-1.5">
-      <Field label="Adresse IP">
+      <Field label="IP">
         {data.ip}
         {data.ip && <CopyButton value={data.ip} />}
       </Field>
       <Field label="Organisation">
         {data.org || "inconnue"}
-        {data.isp && data.isp !== data.org ? ` · FAI : ${data.isp}` : ""}
+        {data.isp && data.isp !== data.org ? ` · ${data.isp}` : ""}
       </Field>
       {data.asn && <Field label="ASN">{data.asn}</Field>}
       {(data.city || data.country_name) && (
-        <Field label="Localisation">{[data.city, data.country_name].filter(Boolean).join(", ")}</Field>
+        <Field label="Localisation">
+          {[data.city, data.region_code, data.country_name].filter(Boolean).join(", ")}
+        </Field>
       )}
       {data.hostnames?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            Noms d'hôte
+          <span
+            className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Hôtes
           </span>
           <div className="flex flex-wrap gap-1">
             {data.hostnames.map((h: string) => (
-              <span
-                key={h}
-                className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
-                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
-              >
-                {h}
-                <CopyButton value={h} />
-              </span>
+              <Chip key={h} value={h} copy />
             ))}
           </div>
         </div>
       )}
-      {data.ports?.length > 0 && <Field label="Ports ouverts">{data.ports.join(", ")}</Field>}
+      {data.ports?.length > 0 && (
+        <Field label="Ports">{data.ports.join(", ")}</Field>
+      )}
     </div>
   );
 }
 
-function OpenPortBody({ data }: BodyProps) {
+function OpenPortBody({ data }: Record<string, any>) {
   return (
     <div className="space-y-1.5">
       <Field label="Service">
@@ -68,11 +92,14 @@ function OpenPortBody({ data }: BodyProps) {
         <CopyButton value={String(data.port)} />
       </Field>
       {data.banner && (
-        <details className="mt-1">
-          <summary className="cursor-pointer text-xs font-medium" style={{ color: "var(--signal)" }}>
-            Afficher la bannière brute
+        <details className="mt-2">
+          <summary
+            className="cursor-pointer text-xs font-semibold inline-flex items-center gap-1"
+            style={{ color: "var(--brand-accent)" }}
+          >
+            Bannière brute
           </summary>
-          <pre className="code-panel mono text-xs whitespace-pre-wrap mt-2 p-3 max-h-40 overflow-y-auto">
+          <pre className="code-panel text-xs whitespace-pre-wrap mt-2 p-3 max-h-40 overflow-y-auto rounded-md">
             {data.banner}
           </pre>
         </details>
@@ -81,35 +108,38 @@ function OpenPortBody({ data }: BodyProps) {
   );
 }
 
-function VulnerabilityBody({ data }: BodyProps) {
-  const color = data.cvss >= 9 ? "var(--danger)" : data.cvss >= 7 ? "var(--warning)" : "var(--text)";
+function VulnerabilityBody({ data }: Record<string, any>) {
+  const cvss = data.cvss ?? 0;
+  const color = cvss >= 9 ? "var(--critical)" : cvss >= 7 ? "var(--high)" : "var(--text-primary)";
   return (
     <div className="space-y-1.5">
-      <Field label="Score de risque">
-        <strong style={{ color }}>{data.cvss}</strong>
-        <span className="text-xs ml-1" style={{ color: "var(--muted)" }}>
+      <Field label="CVSS">
+        <span className="text-lg font-extrabold" style={{ color, fontFamily: "var(--font-manrope)" }}>
+          {cvss}
+        </span>
+        <span className="text-xs ml-1" style={{ color: "var(--text-secondary)" }}>
           / 10
         </span>
       </Field>
       {data.summary && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-28 shrink-0" style={{ color: "var(--muted)" }}>
+          <span
+            className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]"
+            style={{ color: "var(--text-secondary)" }}
+          >
             Résumé
           </span>
-          <p style={{ color: "var(--muted)" }}>{data.summary}</p>
+          <p style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{data.summary}</p>
         </div>
       )}
     </div>
   );
 }
 
-function DomainRegistrationBody({ data }: BodyProps) {
+function DomainRegistrationBody({ data }: Record<string, any>) {
   return (
     <div className="space-y-1.5">
-      <Field label="Domaine">
-        {data.domain}
-        {data.domain && <CopyButton value={data.domain} />}
-      </Field>
+      <Field label="Domaine">{data.domain}{data.domain && <CopyButton value={data.domain} />}</Field>
       <Field label="Registraire">{data.registrar || "inconnu"}</Field>
       {data.creation_date && <Field label="Créé le">{data.creation_date}</Field>}
       {data.expiration_date && <Field label="Expire le">{data.expiration_date}</Field>}
@@ -117,38 +147,24 @@ function DomainRegistrationBody({ data }: BodyProps) {
       {data.country && <Field label="Pays">{data.country}</Field>}
       {data.name_servers?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            Serveurs de noms
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+            NS
           </span>
           <div className="flex flex-wrap gap-1">
             {data.name_servers.map((ns: string) => (
-              <span
-                key={ns}
-                className="mono text-xs px-2 py-0.5 rounded"
-                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
-              >
-                {ns}
-              </span>
+              <Chip key={ns} value={ns} />
             ))}
           </div>
         </div>
       )}
-      {data.status?.length > 0 && <Field label="Statut">{data.status.join(", ")}</Field>}
       {data.emails?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
             E-mails
           </span>
           <div className="flex flex-wrap gap-1">
             {data.emails.map((e: string) => (
-              <span
-                key={e}
-                className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
-                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
-              >
-                {e}
-                <CopyButton value={e} />
-              </span>
+              <Chip key={e} value={e} copy />
             ))}
           </div>
         </div>
@@ -157,38 +173,33 @@ function DomainRegistrationBody({ data }: BodyProps) {
   );
 }
 
-function DomainExpiryBody({ data }: BodyProps) {
+function DomainExpiryBody({ data }: Record<string, any>) {
   const expired = data.days_remaining < 0;
-  const color = expired ? "var(--danger)" : "var(--warning)";
+  const color = expired ? "var(--critical)" : "var(--high)";
   return (
     <div className="space-y-1.5">
       <Field label="Expiration">{data.expiration_date}</Field>
       <Field label="Jours restants">
-        <strong style={{ color }}>{data.days_remaining}</strong>
+        <span className="text-lg font-extrabold" style={{ color, fontFamily: "var(--font-manrope)" }}>
+          {data.days_remaining}
+        </span>
       </Field>
     </div>
   );
 }
 
-function ReverseDnsBody({ data }: BodyProps) {
+function ReverseDnsBody({ data }: Record<string, any>) {
   return (
     <div className="space-y-1.5">
-      <Field label="ip address">
-        {data.ip}
-        {data.ip && <CopyButton value={data.ip} />}
-      </Field>
+      <Field label="IP">{data.ip}{data.ip && <CopyButton value={data.ip} />}</Field>
       {data.hostnames?.length > 0 && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-24 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
-            hostnames
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+            Hostnames
           </span>
           <div className="flex flex-wrap gap-1">
             {data.hostnames.map((h: string) => (
-              <span key={h} className="mono text-xs px-2 py-0.5 flex items-center gap-1"
-                style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}>
-                {h}
-                <CopyButton value={h} />
-              </span>
+              <Chip key={h} value={h} copy />
             ))}
           </div>
         </div>
@@ -196,7 +207,8 @@ function ReverseDnsBody({ data }: BodyProps) {
     </div>
   );
 }
-function EmailSecurityBody({ data }: BodyProps) {
+
+function EmailSecurityBody({ data }: Record<string, any>) {
   return (
     <div className="space-y-1.5">
       <Field label="Vérification">{data.check?.toUpperCase()}</Field>
@@ -204,49 +216,40 @@ function EmailSecurityBody({ data }: BodyProps) {
       {data.policy && <Field label="Politique">{data.policy}</Field>}
       {data.record && (
         <div className="flex items-start gap-2 text-sm">
-          <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
             Enregistrement
           </span>
-          <span className="mono text-xs break-all">{data.record}</span>
+          <span className="text-xs break-all" style={{ color: "var(--text-primary)" }}>
+            {data.record}
+          </span>
         </div>
       )}
-      {data.selectors?.length > 0 && <Field label="Sélecteurs">{data.selectors.join(", ")}</Field>}
     </div>
   );
 }
+
 const CATEGORY_LABEL: Record<string, string> = {
-  emails: "E-mails",
-  hosts: "Noms d'hôte",
-  ips: "Adresses IP",
-  urls: "URLs",
+  emails: "E-mails", hosts: "Noms d'hôte", ips: "Adresses IP", urls: "URLs",
 };
 
-function DiscoveredAssetsBody({ data }: BodyProps) {
+function DiscoveredAssetsBody({ data }: Record<string, any>) {
   const items: string[] = data.items || [];
   const category = data.category || "";
   const label = CATEGORY_LABEL[category] || category;
-
   return (
     <div className="space-y-1.5">
       <Field label="Catégorie">{label}</Field>
       <Field label="Trouvés">{items.length}</Field>
       <div className="flex items-start gap-2 text-sm">
-        <span className="text-xs w-28 shrink-0 pt-0.5" style={{ color: "var(--muted)" }}>
+        <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
           Éléments
         </span>
-        <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+        <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto">
           {items.slice(0, 50).map((item: string) => (
-            <span
-              key={item}
-              className="mono text-xs px-2 py-0.5 rounded flex items-center gap-1"
-              style={{ background: "var(--panel-alt)", border: "1px solid var(--hairline)" }}
-            >
-              {item}
-              <CopyButton value={item} />
-            </span>
+            <Chip key={item} value={item} copy />
           ))}
           {items.length > 50 && (
-            <span className="text-xs" style={{ color: "var(--muted)" }}>
+            <span className="text-xs self-center" style={{ color: "var(--text-secondary)" }}>
               +{items.length - 50} autres
             </span>
           )}
@@ -255,12 +258,8 @@ function DiscoveredAssetsBody({ data }: BodyProps) {
     </div>
   );
 }
-// Ajoutez une entrée par finding_type ici pour un rendu soigné. Tout type
-// non enregistré retombe automatiquement sur le JSON brut (voir le
-// `Body ? <Body /> : <pre>...` plus bas) -- un nouvel outil backend
-// fonctionne donc immédiatement, sans aucune modification frontend
-// nécessaire. Ajouter un rendu ici n'est qu'une amélioration cosmétique.
-const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
+
+const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, any> }>> = {
   host_info: HostInfoBody,
   open_port: OpenPortBody,
   vulnerability: VulnerabilityBody,
@@ -271,51 +270,83 @@ const BODY_RENDERERS: Record<string, React.ComponentType<BodyProps>> = {
   discovered_assets: DiscoveredAssetsBody,
 };
 
+/* ── FindingCard ──────────────────────────────────────────────────────── */
+
 export default function FindingCard({ finding }: { finding: Finding }) {
   const Body = BODY_RENDERERS[finding.finding_type];
   const accent = SEVERITY_HEX[finding.severity] || SEVERITY_HEX.info;
   const explainer = SEVERITY_EXPLAINER[finding.severity];
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div
-      className="panel mb-3 pl-4 pr-5 py-4"
+      className="panel mb-3 overflow-hidden"
       style={{ borderLeft: `3px solid ${accent}` }}
     >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
-          <p className="eyebrow mb-1" title={FINDING_TYPE_DESCRIPTION[finding.finding_type]}>
-            {findingTypeLabel(finding.finding_type)}
-          </p>
-          <h4 className="font-semibold flex items-center gap-2">
+      {/* Header */}
+      <div className="px-4 py-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className="text-[10px] font-bold uppercase tracking-[0.08em]"
+              style={{ color: accent }}
+              title={FINDING_TYPE_DESCRIPTION[finding.finding_type]}
+            >
+              {findingTypeLabel(finding.finding_type)}
+            </span>
+          </div>
+          <h4 className="text-sm font-bold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
             {finding.title}
             <CopyButton value={finding.title} />
           </h4>
+          {explainer && (
+            <p className="text-[12px] mt-1" style={{ color: "var(--text-secondary)" }}>
+              {explainer}
+            </p>
+          )}
         </div>
         <SeverityBadge severity={finding.severity} />
       </div>
 
-      {explainer && (
-        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
-          {explainer}
-        </p>
-      )}
-
+      {/* Body */}
       {Body ? (
-        <Body data={finding.data} />
+        <div className="px-4 pb-3" style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+          <Body data={finding.data} />
+        </div>
       ) : (
-        <pre className="mono text-xs whitespace-pre-wrap" style={{ color: "var(--muted)" }}>
-          {JSON.stringify(finding.data, null, 2)}
-        </pre>
+        <div className="px-4 pb-3" style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+          <pre className="text-xs whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
+            {JSON.stringify(finding.data, null, 2)}
+          </pre>
+        </div>
       )}
 
-      <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-medium" style={{ color: "var(--muted)" }}>
-          Détails techniques <span style={{ color: "var(--faint)" }}>(pour les équipes sécurité)</span>
-        </summary>
-        <pre className="code-panel mono text-xs whitespace-pre-wrap mt-2 p-3 max-h-60 overflow-y-auto">
-          {JSON.stringify(finding.data, null, 2)}
-        </pre>
-      </details>
+      {/* Technical details (collapsible) */}
+      <div style={{ borderTop: "1px solid var(--border)" }}>
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="w-full px-4 py-2 text-left flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.05em] transition-colors hover:bg-[var(--panel-dim)]"
+          style={{ color: "var(--text-secondary)" }}
+        >
+          <span>Détails techniques</span>
+          <span
+            style={{
+              transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.2s ease",
+              fontSize: "10px",
+            }}
+          >
+            ▼
+          </span>
+        </button>
+        {expanded && (
+          <div className="px-4 pb-3">
+            <pre className="code-panel text-xs whitespace-pre-wrap p-3 max-h-72 overflow-y-auto rounded-md">
+              {JSON.stringify(finding.data, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

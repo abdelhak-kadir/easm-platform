@@ -38,7 +38,7 @@ export default function FindingsToolbar({
   return (
     <div className="mb-5 space-y-3">
       <div className="relative">
-        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: "var(--faint)" }}>
+        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style={{ color: "var(--text-secondary)" }}>
           ⌕
         </span>
         <input
@@ -54,9 +54,9 @@ export default function FindingsToolbar({
           onClick={() => onSetSeverities(new Set(URGENT))}
           className="text-sm font-semibold px-3.5 py-1.5 rounded-full transition-colors"
           style={{
-            border: `1px solid ${isUrgentOnly ? "var(--danger)" : "var(--hairline)"}`,
-            color: isUrgentOnly ? "var(--danger)" : "var(--muted)",
-            background: isUrgentOnly ? "var(--danger-dim)" : "var(--panel)",
+            border: `1px solid ${isUrgentOnly ? "var(--critical)" : "var(--border)"}`,
+            color: isUrgentOnly ? "var(--critical)" : "var(--text-secondary)",
+            background: isUrgentOnly ? "var(--critical-dim)" : "var(--panel)",
           }}
         >
           À corriger uniquement
@@ -65,21 +65,21 @@ export default function FindingsToolbar({
           onClick={() => onSetSeverities(new Set(ALL_SEVERITIES))}
           className="text-sm font-semibold px-3.5 py-1.5 rounded-full transition-colors"
           style={{
-            border: `1px solid ${isAll ? "var(--signal)" : "var(--hairline)"}`,
-            color: isAll ? "var(--signal)" : "var(--muted)",
-            background: isAll ? "var(--signal-dim)" : "var(--panel)",
+            border: `1px solid ${isAll ? "var(--brand-accent)" : "var(--border)"}`,
+            color: isAll ? "var(--brand-accent)" : "var(--text-secondary)",
+            background: isAll ? "var(--brand-dim)" : "var(--panel)",
           }}
         >
           Tout afficher
         </button>
       </div>
 
-      <p className="text-xs" style={{ color: "var(--muted)" }}>
+      <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
         Affichage de {resultCount} sur {totalCount} résultats
       </p>
 
       <details className="group">
-        <summary className="cursor-pointer text-xs font-medium inline-flex items-center gap-1" style={{ color: "var(--signal)" }}>
+        <summary className="cursor-pointer text-xs font-medium inline-flex items-center gap-1" style={{ color: "var(--brand-accent)" }}>
           Plus de filtres
         </summary>
         <div className="mt-3 space-y-3 pl-0.5">
@@ -94,8 +94,8 @@ export default function FindingsToolbar({
                   onClick={() => onToggleSeverity(sev)}
                   className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
                   style={{
-                    border: `1px solid ${active ? color : "var(--hairline)"}`,
-                    color: active ? color : "var(--muted)",
+                    border: `1px solid ${active ? color : "var(--border)"}`,
+                    color: active ? color : "var(--text-secondary)",
                     background: active ? `${color}14` : "var(--panel)",
                   }}
                 >
@@ -112,9 +112,9 @@ export default function FindingsToolbar({
                 onClick={() => onTypeChange(null)}
                 className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
                 style={{
-                  border: `1px solid ${activeType === null ? "var(--signal)" : "var(--hairline)"}`,
-                  color: activeType === null ? "var(--signal)" : "var(--muted)",
-                  background: activeType === null ? "var(--signal-dim)" : "var(--panel)",
+                  border: `1px solid ${activeType === null ? "var(--brand-accent)" : "var(--border)"}`,
+                  color: activeType === null ? "var(--brand-accent)" : "var(--text-secondary)",
+                  background: activeType === null ? "var(--brand-dim)" : "var(--panel)",
                 }}
               >
                 Toutes
@@ -125,9 +125,9 @@ export default function FindingsToolbar({
                   onClick={() => onTypeChange(t)}
                   className="text-[11px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full transition-colors"
                   style={{
-                    border: `1px solid ${activeType === t ? "var(--signal)" : "var(--hairline)"}`,
-                    color: activeType === t ? "var(--signal)" : "var(--muted)",
-                    background: activeType === t ? "var(--signal-dim)" : "var(--panel)",
+                    border: `1px solid ${activeType === t ? "var(--brand-accent)" : "var(--border)"}`,
+                    color: activeType === t ? "var(--brand-accent)" : "var(--text-secondary)",
+                    background: activeType === t ? "var(--brand-dim)" : "var(--panel)",
                   }}
                 >
                   {findingTypeLabel(t)}

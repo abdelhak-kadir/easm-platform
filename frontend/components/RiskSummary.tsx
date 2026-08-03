@@ -18,11 +18,11 @@ export default function RiskSummary({ findings, assetValue }: RiskSummaryProps) 
     headline = "Aucun résultat pour cette analyse.";
     subline = "Cette analyse n'a rien trouvé à examiner.";
   } else if (critical > 0) {
-    tone = { bg: "var(--danger-dim)", border: "var(--danger)", text: "var(--danger)", icon: "!" };
+    tone = { bg: "var(--critical-dim)", border: "var(--critical)", text: "var(--critical)", icon: "!" };
     headline = `${critical} problème${critical === 1 ? "" : "s"} urgent${critical === 1 ? "" : "s"} sur ${assetValue}.`;
     subline = "Ces failles sont activement dangereuses et doivent être corrigées le plus vite possible.";
   } else if (high > 0) {
-    tone = { bg: "var(--warning-dim)", border: "var(--warning)", text: "var(--warning)", icon: "!" };
+    tone = { bg: "var(--high-dim)", border: "var(--high)", text: "var(--high)", icon: "!" };
     headline = `${high} problème${high === 1 ? "" : "s"} à corriger prochainement sur ${assetValue}.`;
     subline = "Rien de critique, mais ce sont de vrais risques à traiter.";
   } else {
@@ -43,10 +43,10 @@ export default function RiskSummary({ findings, assetValue }: RiskSummaryProps) 
         {tone.icon}
       </span>
       <div>
-        <p className="text-[15px] font-bold" style={{ color: "var(--text)" }}>
+        <p className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
           {headline}
         </p>
-        <p className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>
+        <p className="text-sm mt-0.5" style={{ color: "var(--text-secondary)" }}>
           {subline}
         </p>
       </div>

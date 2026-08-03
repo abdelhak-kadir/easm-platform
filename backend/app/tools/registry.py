@@ -25,6 +25,8 @@ from sqlalchemy.orm import Session
 from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.amass import parse as amass_parse
 from app.tools.amass import scan as amass_scan
+from app.tools.censys import parse as censys_parse
+from app.tools.censys import scan as censys_scan
 from app.tools.email_security import parse as email_security_parse
 from app.tools.email_security import scan as email_security_scan
 from app.tools.httpx import parse as httpx_parse
@@ -115,6 +117,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
+    ),
+    ToolName.CENSYS: ToolSpec(
+        tool=ToolName.CENSYS,
+        run=censys_scan.run,
+        parse=censys_parse.parse,
+        asset_types=frozenset({AssetType.IP}),
     ),
     ToolName.WHOIS: ToolSpec(
         tool=ToolName.WHOIS,
