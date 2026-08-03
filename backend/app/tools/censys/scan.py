@@ -37,7 +37,9 @@ def run(asset_value: str) -> dict:
     api_id = os.environ.get("CENSYS_API_ID")
     api_secret = os.environ.get("CENSYS_API_SECRET")
     if not api_id or not api_secret:
-        raise CensysScanError("CENSYS_API_ID and CENSYS_API_SECRET must both be set")
+        raise CensysNoDataError(
+            "CENSYS_API_ID and CENSYS_API_SECRET not set — skipping Censys lookup"
+        )
 
     try:
         resp = requests.get(
@@ -54,6 +56,10 @@ def run(asset_value: str) -> dict:
         status = e.response.status_code if e.response is not None else 0
         if status == 404:
             raise CensysNoDataError(f"No Censys data available for {ip}") from None
+        if status in (401, 403):
+            raise CensysNoDataError(
+                f"Censys API access denied ({status}) for {ip} — check credentials"
+            ) from None
         if status == 429:
             raise CensysRateLimitError(f"Censys rate-limited on {ip}") from None
         if 500 <= status < 600:

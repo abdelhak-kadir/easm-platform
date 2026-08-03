@@ -90,14 +90,14 @@ def test_run_strips_whitespace(mock_get):
 
 
 @patch.dict("os.environ", {}, clear=True)
-def test_run_raises_without_api_id():
-    with pytest.raises(CensysScanError, match="CENSYS_API_ID and CENSYS_API_SECRET"):
+def test_run_raises_no_data_without_api_id():
+    with pytest.raises(CensysNoDataError, match="CENSYS_API_ID and CENSYS_API_SECRET"):
         run("1.2.3.4")
 
 
 @patch.dict("os.environ", {"CENSYS_API_ID": "id-only"}, clear=True)
-def test_run_raises_without_api_secret():
-    with pytest.raises(CensysScanError, match="CENSYS_API_ID and CENSYS_API_SECRET"):
+def test_run_raises_no_data_without_api_secret():
+    with pytest.raises(CensysNoDataError, match="CENSYS_API_ID and CENSYS_API_SECRET"):
         run("1.2.3.4")
 
 
@@ -130,6 +130,28 @@ def test_run_raises_no_data_on_404(mock_get):
     mock_get.side_effect = requests.HTTPError("404 Not Found", response=mock_resp)
 
     with pytest.raises(CensysNoDataError, match="No Censys data"):
+        run("1.2.3.4")
+
+
+@patch("app.tools.censys.scan.requests.get")
+@patch.dict("os.environ", {"CENSYS_API_ID": "id", "CENSYS_API_SECRET": "secret"})
+def test_run_raises_no_data_on_401(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_get.side_effect = requests.HTTPError("401 Unauthorized", response=mock_resp)
+
+    with pytest.raises(CensysNoDataError, match="access denied"):
+        run("1.2.3.4")
+
+
+@patch("app.tools.censys.scan.requests.get")
+@patch.dict("os.environ", {"CENSYS_API_ID": "id", "CENSYS_API_SECRET": "secret"})
+def test_run_raises_no_data_on_403(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_get.side_effect = requests.HTTPError("403 Forbidden", response=mock_resp)
+
+    with pytest.raises(CensysNoDataError, match="access denied"):
         run("1.2.3.4")
 
 
