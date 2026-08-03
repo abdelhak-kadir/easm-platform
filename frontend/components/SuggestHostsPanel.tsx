@@ -214,7 +214,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
             {data.candidates.length} hôte{data.candidates.length !== 1 ? "s" : ""} trouvé
             {data.candidates.length !== 1 ? "s" : ""}
             <span className="text-xs font-normal ml-1.5" style={{ color: "var(--muted)" }}>
-              via certificats TLS (crt.sh)
+              via énumération passive
             </span>
           </p>
           {eligibleCount > 0 && (

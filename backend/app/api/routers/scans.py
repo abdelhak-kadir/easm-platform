@@ -301,13 +301,26 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
     return [_serialize_job(db, j) for j in jobs]
 
 
+# Tools whose raw_data["hosts"] feeds the suggest-discovered acceptance flow.
+_DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
+    {
+        ToolName.THEHARVESTER,
+        ToolName.SUBFINDER,
+        ToolName.AMASS,
+    }
+)
+
+
 @router.get("/{job_id}/suggest-discovered")
 def suggest_discovered_assets(job_id: int, db: DBSession, category: str = "hosts"):
-    """Surface theHarvester's discovered hostnames as candidates for
-    promotion to real, trackable SUBDOMAIN Assets. Returns candidates
-    for review -- does NOT create assets (a wildcard cert can leak
-    unrelated hostnames, so this stays human-gated like the Shodan
-    org/net suggestions)."""
+    """Surface passive-enumeration-discovered hostnames as candidates for
+    promotion to real, trackable SUBDOMAIN Assets. Works with any tool
+    in ``_DISCOVERY_TOOLS`` (theHarvester, Subfinder, Amass) that produces
+    ``raw_data["hosts"]``.
+
+    Returns candidates for review — does NOT create assets (wildcard certs,
+    search-engine noise, and stale DNS entries can pollute results, so this
+    stays human-gated like the Shodan org/net suggestions)."""
     if category != "hosts":
         raise HTTPException(
             status_code=400,
@@ -318,8 +331,12 @@ def suggest_discovered_assets(job_id: int, db: DBSession, category: str = "hosts
     job = db.get(ScanJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Scan job not found")
-    if job.tool != ToolName.THEHARVESTER:
-        raise HTTPException(status_code=400, detail="Job must be a theHarvester scan")
+    if job.tool not in _DISCOVERY_TOOLS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Job tool '{job.tool}' does not produce discovered hosts. "
+            f"Expected one of: {sorted(t.value for t in _DISCOVERY_TOOLS)}",
+        )
     if job.status != ScanStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job has not completed yet")
 
