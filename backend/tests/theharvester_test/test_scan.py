@@ -158,6 +158,15 @@ def test_run_raises_scan_error_on_timeout(mock_get):
 
 
 @patch("app.tools.theharvester.scan.requests.get")
+def test_run_raises_rate_limit_error_on_crtsh_timeout(mock_get):
+    """CRT.sh timeout is a transient failure → must be retryable by Celery."""
+    mock_get.side_effect = requests.Timeout()
+
+    with pytest.raises(TheHarvesterRateLimitError, match="timed out"):
+        run("example.com")
+
+
+@patch("app.tools.theharvester.scan.requests.get")
 def test_run_raises_rate_limit_on_429(mock_get):
     mock_resp = MagicMock()
     mock_resp.status_code = 429

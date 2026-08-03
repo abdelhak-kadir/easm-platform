@@ -20,10 +20,14 @@ RUN curl -sL https://github.com/projectdiscovery/subfinder/releases/download/v2.
 
 # OWASP Amass v4.2.0 — passive + active subdomain enumeration
 # oam_subs is bundled inside amass since v4.x (symlink)
+# The release zip nests the binary under amass_Linux_amd64/amass rather
+# than at the archive root, so extract to a scratch dir first and move
+# just the binary into place.
 RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass_Linux_amd64.zip \
     -o /tmp/am.zip \
-    && unzip -o /tmp/am.zip -d /usr/local/bin/ amass \
-    && rm /tmp/am.zip \
+    && unzip -o /tmp/am.zip -d /tmp/am_extract \
+    && mv /tmp/am_extract/amass_Linux_amd64/amass /usr/local/bin/amass \
+    && rm -rf /tmp/am.zip /tmp/am_extract \
     && chmod +x /usr/local/bin/amass \
     && ln -sf /usr/local/bin/amass /usr/local/bin/oam_subs
 

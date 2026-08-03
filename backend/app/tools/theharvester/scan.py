@@ -206,7 +206,7 @@ def _query_crtsh(
         resp = requests.get(url, timeout=_CRTSH_TIMEOUT_S)
         resp.raise_for_status()
     except requests.Timeout:
-        raise TheHarvesterScanError(
+        raise TheHarvesterRateLimitError(
             f"CRT.sh request timed out after {_CRTSH_TIMEOUT_S}s for {domain}"
         ) from None
     except requests.HTTPError as e:
