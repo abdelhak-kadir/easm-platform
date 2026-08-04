@@ -55,7 +55,7 @@ export default function ScanHistory({
         className="text-xs px-4 py-6 mb-6 rounded-lg text-center"
         style={{ color: "var(--text-secondary)", border: "1px dashed var(--border)" }}
       >
-        Aucune analyse précédente — lancez-en une ci-dessus.
+        Aucune analyse précédente lancez-en une ci-dessus.
       </p>
     );
   }

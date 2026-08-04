@@ -162,7 +162,7 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
             className="text-xs mt-2.5"
             style={{ color: "var(--text-secondary)" }}
           >
-            Ces suggestions nécessitent une validation humaine — elles ne sont pas
+            Ces suggestions nécessitent une validation humaine elles ne sont pas
             ajoutées automatiquement.
           </p>
         </div>
@@ -353,7 +353,7 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
             {acceptedResult.created.map((r) => (
               <li key={r.asset_id} className="mono">
                 {r.value}
-                {r.created ? " — nouvelle cible, analyse lancée" : " — déjà suivie"}
+                {r.created ? " nouvelle cible, analyse lancée" : " déjà suivie"}
               </li>
             ))}
           </ul>

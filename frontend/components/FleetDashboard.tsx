@@ -53,8 +53,7 @@ export default function FleetDashboard({ assets, jobs, activeCount, onSelectAsse
           Tableau de bord
         </h1>
         <p className="text-sm max-w-lg" style={{ color: "var(--text-on-dark-soft)" }}>
-          Surveillez votre surface d'attaque externe. Ajoutez une cible dans le panneau de gauche
-          pour lancer une analyse et découvrir les services exposés, vulnérabilités et failles de sécurité.
+          Surveillez votre surface d'attaque externe.
         </p>
       </div>
 

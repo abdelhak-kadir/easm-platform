@@ -16,6 +16,8 @@ import SuggestHostsPanel from "../components/SuggestHostsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
+import ToolExplainer from "../components/ToolExplainer";
+import PlainSummary from "../components/PlainSummary";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -211,7 +213,7 @@ export default function Home() {
                     background: "var(--critical-dim)",
                   }}
                 >
-                  L'analyse a échoué — consultez l'historique ci-dessus ou réessayez.
+                  L'analyse a échoué consultez l'historique ci-dessus ou réessayez.
                 </div>
               )}
 

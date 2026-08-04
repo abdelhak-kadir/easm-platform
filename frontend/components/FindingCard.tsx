@@ -5,6 +5,7 @@ import { Finding } from "../types/scan";
 import SeverityBadge, { SEVERITY_HEX } from "./SeverityBadge";
 import CopyButton from "./CopyButton";
 import { findingTypeLabel, FINDING_TYPE_DESCRIPTION, SEVERITY_EXPLAINER } from "../lib/labels";
+import { explainFinding } from "../lib/explanations";
 
 /* ── shared chip / field atoms ────────────────────────────────────────── */
 
@@ -37,6 +38,24 @@ function Chip({ value, copy }: { value: string; copy?: boolean }) {
       {value}
       {copy && <CopyButton value={value} />}
     </span>
+  );
+}
+
+/* ── explanation block (new) ─────────────────────────────────────────── */
+
+function ExplanationBlock({ finding }: { finding: Finding }) {
+  const text = explainFinding(finding);
+  return (
+    <p
+      className="text-[13px] leading-relaxed mb-3 px-3 py-2.5 rounded-md"
+      style={{
+        color: "var(--text-primary)",
+        background: "var(--panel-dim)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {text}
+    </p>
   );
 }
 
@@ -308,18 +327,17 @@ export default function FindingCard({ finding }: { finding: Finding }) {
         <SeverityBadge severity={finding.severity} />
       </div>
 
-      {/* Body */}
-      {Body ? (
-        <div className="px-4 pb-3" style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+      {/* Explanation + Body */}
+      <div className="px-4 pb-3" style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+        <ExplanationBlock finding={finding} />
+        {Body ? (
           <Body data={finding.data} />
-        </div>
-      ) : (
-        <div className="px-4 pb-3" style={{ borderTop: "1px solid var(--border)", paddingTop: "0.75rem" }}>
+        ) : (
           <pre className="text-xs whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
             {JSON.stringify(finding.data, null, 2)}
           </pre>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Technical details (collapsible) */}
       <div style={{ borderTop: "1px solid var(--border)" }}>
