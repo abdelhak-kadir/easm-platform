@@ -251,6 +251,37 @@ const CATEGORY_LABEL: Record<string, string> = {
   emails: "E-mails", hosts: "Noms d'hôte", ips: "Adresses IP", urls: "URLs",
 };
 
+function HttpServiceBody({ data }: Record<string, any>) {
+  const status = data.status_code;
+  const ok = typeof status === "number" && status < 400;
+  return (
+    <div className="space-y-1.5">
+      <Field label="Code HTTP">
+        <span style={{ color: ok ? "var(--success)" : "var(--high)" }}>{status ?? "?"}</span>
+      </Field>
+      {data.title && <Field label="Titre">{data.title}</Field>}
+      {data.url && (
+        <Field label="URL">
+          <span className="text-xs break-all">{data.url}</span>
+        </Field>
+      )}
+      {data.server && <Field label="Serveur">{data.server}</Field>}
+      {data.technologies?.length > 0 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+            Technologies
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {data.technologies.map((t: string) => (
+              <Chip key={t} value={t} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiscoveredAssetsBody({ data }: Record<string, any>) {
   const items: string[] = data.items || [];
   const category = data.category || "";
@@ -287,6 +318,7 @@ const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, 
   reverse_dns: ReverseDnsBody,
   email_security: EmailSecurityBody,
   discovered_assets: DiscoveredAssetsBody,
+  http_service: HttpServiceBody,
 };
 
 /* ── FindingCard ──────────────────────────────────────────────────────── */

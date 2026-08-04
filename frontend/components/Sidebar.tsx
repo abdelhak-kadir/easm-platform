@@ -48,7 +48,7 @@ export default function Sidebar({
     setError("");
     setAdding(true);
     try {
-      const asset = await onCreate(value, "ip");
+      const asset = await onCreate(value, "");
       setQuery("");
       onSelect(asset);
     } catch (e: any) {

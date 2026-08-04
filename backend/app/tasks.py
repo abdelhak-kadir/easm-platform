@@ -90,6 +90,15 @@ def run_tool_scan(self, job_id: int):
         job.started_at = datetime.now(UTC)
         db.commit()
 
+        last_result = (
+            db.query(ScanResult)
+            .join(ScanJob)
+            .filter(ScanJob.asset_id == asset.id, ScanJob.tool == job.tool)
+            .order_by(ScanResult.version.desc())
+            .first()
+        )
+        next_version = (last_result.version + 1) if last_result else 1
+
         try:
             raw_data = spec.run(asset.value)
         except ToolRateLimitError as e:
@@ -99,17 +108,13 @@ def run_tool_scan(self, job_id: int):
             job.status = ScanStatus.COMPLETED
             job.error_message = str(e)[:1000]
             job.completed_at = datetime.now(UTC)
+            # Save a minimal ScanResult so chaining resolvers can find the
+            # cached outcome and skip redundant live lookups (e.g. Reverse DNS
+            # returning "no PTR" should prevent Shodan/Censys chaining from
+            # re-running the same DNS query).
+            db.add(ScanResult(scan_job_id=job.id, version=next_version, raw_data={}))
             db.commit()
             return {"job_id": job.id, "status": "completed_no_data"}
-
-        last_result = (
-            db.query(ScanResult)
-            .join(ScanJob)
-            .filter(ScanJob.asset_id == asset.id, ScanJob.tool == job.tool)
-            .order_by(ScanResult.version.desc())
-            .first()
-        )
-        next_version = (last_result.version + 1) if last_result else 1
 
         result = ScanResult(scan_job_id=job.id, version=next_version, raw_data=raw_data)
         db.add(result)

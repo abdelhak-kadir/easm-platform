@@ -6,7 +6,6 @@ import Sidebar from "../components/Sidebar";
 import ScanHistory from "../components/ScanHistory";
 import FindingCard from "../components/FindingCard";
 import StatsSummary from "../components/StatsSummary";
-import SeverityChart from "../components/SeverityChart";
 import SeverityDonut from "../components/SeverityDonut";
 import RiskSummary from "../components/RiskSummary";
 import FindingsToolbar from "../components/FindingsToolbar";
@@ -217,6 +216,16 @@ export default function Home() {
                 </div>
               )}
 
+              {/* Tool explainer */}
+              {job && (job.status === "completed" || job.status === "failed") && (
+                <ToolExplainer job={job} findings={results?.findings} />
+              )}
+
+              {/* Plain-language summary */}
+              {results?.findings && results.findings.length > 0 && (
+                <PlainSummary findings={results.findings} />
+              )}
+
               {/* Suggestion panels */}
               {job && job.tool === "shodan" && job.status === "completed" && (
                 <SuggestAssetsPanel
@@ -246,10 +255,7 @@ export default function Home() {
                   <RiskSummary findings={results.findings} assetValue={asset.value} />
                   <StatsSummary findings={results.findings} />
                   {results.findings.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <SeverityChart findings={results.findings} />
-                      <SeverityDonut findings={results.findings} />
-                    </div>
+                    <SeverityDonut findings={results.findings} />
                   )}
                   <FindingsToolbar
                     search={search}

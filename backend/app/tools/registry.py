@@ -123,6 +123,9 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=censys_scan.run,
         parse=censys_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        spawns=ToolName.WHOIS,
+        spawn_asset_type=AssetType.DOMAIN,
+        resolve_spawn_value=_resolve_ip_to_domain,
     ),
     ToolName.WHOIS: ToolSpec(
         tool=ToolName.WHOIS,

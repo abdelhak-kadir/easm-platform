@@ -10,6 +10,7 @@ export interface ScanJob {
   id: number;
   tool: string;
   status: string;
+  error_message?: string | null;
   created_at?: string;
   completed_at?: string;
   spawned_asset_id?: number | null;
