@@ -41,3 +41,6 @@ RUN curl -sL https://github.com/projectdiscovery/httpx/releases/download/v1.6.9/
 
 COPY requirements/base.txt .
 RUN pip install --no-cache-dir -r base.txt
+
+# holehe — email account presence checker (100+ services)
+RUN pip install --no-cache-dir holehe

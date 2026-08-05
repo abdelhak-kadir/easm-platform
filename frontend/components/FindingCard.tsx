@@ -59,6 +59,26 @@ function ExplanationBlock({ finding }: { finding: Finding }) {
   );
 }
 
+function EmailPresenceBody({ data }: Record<string, any>) {
+  const services: { name: string; domain: string }[] = data.services || [];
+  return (
+    <div className="space-y-1.5">
+      <Field label="Email">{data.email}{data.email && <CopyButton value={data.email} />}</Field>
+      <Field label="Services">{data.total_count}</Field>
+      <div className="flex items-start gap-2 text-sm">
+        <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+          Trouvé sur
+        </span>
+        <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto">
+          {services.map((s) => (
+            <Chip key={s.name} value={s.domain || s.name} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── body renderers per finding_type ─────────────────────────────────── */
 
 function HostInfoBody({ data }: Record<string, any>) {
@@ -319,6 +339,7 @@ const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, 
   email_security: EmailSecurityBody,
   discovered_assets: DiscoveredAssetsBody,
   http_service: HttpServiceBody,
+  email_presence: EmailPresenceBody,
 };
 
 /* ── FindingCard ──────────────────────────────────────────────────────── */

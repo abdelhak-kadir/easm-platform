@@ -47,6 +47,7 @@ class ToolName(enum.StrEnum):
     HIBP = "hibp"
     REVERSE_DNS = "reverse_dns"
     SUBFINDER = "subfinder"
+    HOLEHE = "holehe"
 
 
 class Severity(enum.StrEnum):
