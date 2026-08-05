@@ -30,6 +30,7 @@ class ToolName(enum.StrEnum):
     AMASS = "amass"
     THEHARVESTER = "theharvester"
     HTTPX = "httpx"
+    MERKLEMAP = "merklemap"
     NMAP = "nmap"
     SHODAN = "shodan"
     CENSYS = "censys"

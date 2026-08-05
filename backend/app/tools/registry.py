@@ -31,6 +31,8 @@ from app.tools.email_security import parse as email_security_parse
 from app.tools.email_security import scan as email_security_scan
 from app.tools.httpx import parse as httpx_parse
 from app.tools.httpx import scan as httpx_scan
+from app.tools.merklemap import parse as merklemap_parse
+from app.tools.merklemap import scan as merklemap_scan
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
@@ -167,6 +169,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         tool=ToolName.AMASS,
         run=amass_scan.run,
         parse=amass_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.MERKLEMAP: ToolSpec(
+        tool=ToolName.MERKLEMAP,
+        run=merklemap_scan.run,
+        parse=merklemap_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
     ),
     ToolName.HTTPX: ToolSpec(

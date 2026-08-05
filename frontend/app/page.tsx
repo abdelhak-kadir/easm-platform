@@ -238,7 +238,7 @@ export default function Home() {
                 />
               )}
 
-              {job && ["theharvester", "subfinder", "amass"].includes(job.tool) && job.status === "completed" && (
+              {job && ["theharvester", "subfinder", "amass", "merklemap"].includes(job.tool) && job.status === "completed" && (
                 <SuggestHostsPanel
                   apiBase={API_BASE}
                   jobId={job.id}
