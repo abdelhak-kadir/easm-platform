@@ -3,7 +3,7 @@ from sqlalchemy import func
 
 from app.api.deps import DBSession
 from app.api.schemas import AcceptDiscoveredAssets, AcceptSuggestedAssets
-from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
+from app.models import Asset, AssetStatus, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.registry import get_tool_spec, tools_for_asset_type
 from app.tools.shodan.org_search import (
     ShodanSearchError,
@@ -41,6 +41,9 @@ def trigger_discovery(asset_id: int, db: DBSession):
 
     from app.tasks import run_tool_scan
 
+    asset.status = AssetStatus.RUNNING
+    db.commit()
+
     queued = []
     for spec in specs:
         job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
@@ -75,6 +78,8 @@ def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
 
         queued = []
         if is_new:
+            asset.status = AssetStatus.RUNNING
+            db.commit()
             for spec in tools_for_asset_type(AssetType.IP):
                 job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
                 db.add(job)
@@ -124,6 +129,8 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
 
         queued = []
         if is_new:
+            asset.status = AssetStatus.RUNNING
+            db.commit()
             for spec in tools_for_asset_type(payload.asset_type):
                 job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
                 db.add(job)
@@ -167,6 +174,9 @@ def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    asset.status = AssetStatus.RUNNING
+    db.commit()
 
     from app.tasks import run_tool_scan
 

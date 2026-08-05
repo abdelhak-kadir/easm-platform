@@ -1,9 +1,21 @@
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 
+export type AssetStatus = "pending" | "running" | "done";
+
+export type AssetType =
+  | "domain"
+  | "subdomain"
+  | "ip"
+  | "email"
+  | "service"
+  | "technology";
+
 export interface Asset {
   id: number;
   value: string;
   asset_type: string;
+  status: AssetStatus;
+  discovery_run_id: number | null;
 }
 
 export interface ScanJob {

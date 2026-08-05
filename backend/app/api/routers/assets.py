@@ -37,13 +37,25 @@ def create_asset(payload: AssetCreate, db: DBSession):
         db.query(Asset).filter(Asset.value == payload.value, Asset.asset_type == asset_type).first()
     )
     if existing:
-        return {"id": existing.id, "value": existing.value, "asset_type": existing.asset_type}
+        return {
+            "id": existing.id,
+            "value": existing.value,
+            "asset_type": existing.asset_type,
+            "status": existing.status,
+            "discovery_run_id": existing.discovery_run_id,
+        }
 
     asset = Asset(value=payload.value, asset_type=asset_type)
     db.add(asset)
     db.commit()
     db.refresh(asset)
-    return {"id": asset.id, "value": asset.value, "asset_type": asset.asset_type}
+    return {
+        "id": asset.id,
+        "value": asset.value,
+        "asset_type": asset.asset_type,
+        "status": asset.status,
+        "discovery_run_id": asset.discovery_run_id,
+    }
 
 
 @router.get("")
@@ -56,4 +68,10 @@ def get_asset(asset_id: int, db: DBSession):
     asset = db.get(Asset, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return {"id": asset.id, "value": asset.value, "asset_type": asset.asset_type}
+    return {
+        "id": asset.id,
+        "value": asset.value,
+        "asset_type": asset.asset_type,
+        "status": asset.status,
+        "discovery_run_id": asset.discovery_run_id,
+    }
