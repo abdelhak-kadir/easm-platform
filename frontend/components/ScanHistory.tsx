@@ -112,15 +112,24 @@ export default function ScanHistory({
                   {style.label}
                 </span>
 
-                {/* Cancel button — only for active jobs */}
+                {/* Cancel button — span to avoid nested <button> */}
                 {isRunning && (
-                  <button
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
                       fetch(`${apiBase}/scans/${j.id}/cancel`, { method: "POST" })
                         .then(() => loadJobs());
                     }}
-                    className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 transition-colors"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        fetch(`${apiBase}/scans/${j.id}/cancel`, { method: "POST" })
+                          .then(() => loadJobs());
+                      }
+                    }}
+                    className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 transition-colors cursor-pointer"
                     style={{
                       color: "var(--critical)",
                       background: "var(--critical-dim)",
@@ -129,7 +138,7 @@ export default function ScanHistory({
                     title="Annuler cette analyse"
                   >
                     ✕
-                  </button>
+                  </span>
                 )}
               </button>
 

@@ -2,11 +2,10 @@ from app.models import Severity
 
 
 def parse(raw_data: dict) -> list[dict]:
-    """Turn a passive nmap list-scan dict into a list of Finding-ready dicts.
+    """Turn an nmap scan dict into Finding-ready dicts.
 
-    For ``-sL`` (passive list scan), nmap only provides hostnames from
-    DNS PTR resolution — no port or OS data. Produces a single
-    ``host_info`` finding per IP scanned.
+    Produces one ``host_info`` finding (IP, hostnames, OS, port list)
+    plus one ``open_port`` finding per detected service.
     """
     findings: list[dict] = []
 
@@ -14,12 +13,17 @@ def parse(raw_data: dict) -> list[dict]:
     if ip:
         findings.append(_parse_host_info(raw_data))
 
+    for port_info in raw_data.get("ports") or []:
+        findings.append(_parse_port(port_info))
+
     return findings
 
 
 def _parse_host_info(result: dict) -> dict:
     ip = result.get("ip")
     hostnames = result.get("hostnames") or []
+    os_name = result.get("os")
+    ports = sorted(p["port"] for p in (result.get("ports") or []))
 
     return {
         "finding_type": "host_info",
@@ -38,9 +42,43 @@ def _parse_host_info(result: dict) -> dict:
             "region_code": None,
             "latitude": None,
             "longitude": None,
-            "os": None,
+            "os": os_name,
             "tags": [],
-            "ports": [],
+            "ports": ports,
             "last_update": None,
+        },
+    }
+
+
+def _parse_port(port_info: dict) -> dict:
+    port = port_info.get("port")
+    protocol = (port_info.get("protocol") or "tcp").lower()
+    product = port_info.get("product") or ""
+    service = port_info.get("service") or ""
+    version = port_info.get("version") or ""
+    extrainfo = port_info.get("extrainfo") or ""
+
+    label = product or service or f"port {port}"
+    title = f"Open port {port}/{protocol}" + (f" ({label})" if label else "")
+
+    parts = []
+    if product:
+        parts.append(product)
+    if version:
+        parts.append(version)
+    if extrainfo:
+        parts.append(f"({extrainfo})")
+    banner = " ".join(parts) if parts else ""
+
+    return {
+        "finding_type": "open_port",
+        "title": title,
+        "severity": Severity.INFO,
+        "data": {
+            "port": port,
+            "transport": protocol,
+            "product": product or service,
+            "version": version,
+            "banner": banner,
         },
     }

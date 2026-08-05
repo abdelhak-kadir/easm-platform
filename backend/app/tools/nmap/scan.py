@@ -13,22 +13,22 @@ class NmapScanError(ToolScanError):
 
 
 class NmapRateLimitError(NmapScanError, ToolRateLimitError):
-    """Raised when nmap encounters rate-limiting or a transient network error — safe to retry."""
+    """Raised when nmap encounters rate-limiting or transient network error — safe to retry."""
 
 
 class NmapNoDataError(NmapScanError, ToolNoDataError):
-    """Raised when nmap resolves no hostnames — not a failure, just nothing to report."""
+    """Raised when nmap finds nothing — host down or no open ports."""
 
 
 def run(asset_value: str) -> dict:
-    """Run a passive nmap list scan against an IP.
+    """Run an nmap TCP connect scan with service detection against an IP.
 
-    Uses ``-sL`` (list scan) which only performs DNS reverse resolution
-    to discover hostnames — **no packets are sent to the target**. This is
-    passive recon, safe for external attack surface discovery.
+    Scans the top 100 most common ports (``--top-ports 100``) with TCP
+    connect (``-sT`` — no raw sockets needed) and service version
+    detection (``-sV``). Typical scan time: 20–40 seconds.
 
-    Returns a dict with ``hostnames`` suitable for
-    :func:`app.tools.nmap.parse.parse`.
+    Returns a dict with ``ip``, ``hostnames``, ``os``, and ``ports`` keys
+    suitable for :func:`app.tools.nmap.parse.parse`.
     """
     ip = asset_value.strip()
 
@@ -37,10 +37,10 @@ def run(asset_value: str) -> dict:
     except ValueError:
         raise NmapScanError(f"'{ip}' is not a valid IP address — nmap requires an IP") from None
 
-    # -sL  = list scan (DNS resolution only, no packets to target — passive)
-    # -n   = skip reverse DNS (would defeat the purpose of -sL for EASM)
-    # We intentionally do NOT pass -n so nmap resolves PTR records.
-    cmd = [_NMAP_BIN, "-sL", "-oX", "-", ip]
+    # -sT           = TCP connect scan (no raw sockets, works without root)
+    # -sV           = service version detection
+    # --top-ports N = only scan the N most common ports (fast)
+    cmd = [_NMAP_BIN, "-sT", "-sV", "--top-ports", "100", "-oX", "-", ip]
     try:
         proc = subprocess.run(
             cmd,
@@ -68,17 +68,19 @@ def run(asset_value: str) -> dict:
 
 
 def _parse_nmap_xml(xml_string: str) -> dict:
-    """Parse nmap XML output into a structured dict.
+    """Parse nmap ``-sT -sV --top-ports`` XML output into a structured dict.
 
-    For ``-sL`` (passive list scan), nmap only returns hostnames from DNS
-    resolution — no port scan data. Raises ``NmapNoDataError`` when
-    nothing usable was found (no hostnames resolved).
+    Raises ``NmapNoDataError`` when the host is down or has no open ports.
     """
     root = ET.fromstring(xml_string)
 
     host_elem = root.find("host")
     if host_elem is None:
         raise NmapNoDataError("nmap XML has no <host> element")
+
+    status_elem = host_elem.find("status")
+    if status_elem is None or status_elem.get("state") != "up":
+        raise NmapNoDataError("Host is down")
 
     address_elem = host_elem.find("address")
     ip = address_elem.get("addr") if address_elem is not None else "unknown"
@@ -91,11 +93,39 @@ def _parse_nmap_xml(xml_string: str) -> dict:
             if name:
                 hostnames.append(name)
 
-    # -sL does not have <os> or <ports> elements
-    if not hostnames:
-        raise NmapNoDataError(f"No hostnames resolved for {ip}")
+    os_name: str | None = None
+    os_elem = host_elem.find("os")
+    if os_elem is not None:
+        osmatch = os_elem.find("osmatch")
+        if osmatch is not None:
+            os_name = osmatch.get("name")
+
+    ports: list[dict] = []
+    ports_elem = host_elem.find("ports")
+    if ports_elem is not None:
+        for port_elem in ports_elem.findall("port"):
+            state = port_elem.find("state")
+            if state is None or state.get("state") != "open":
+                continue
+            service = port_elem.find("service")
+            ports.append(
+                {
+                    "port": int(port_elem.get("portid", 0)),
+                    "protocol": port_elem.get("protocol", "tcp"),
+                    "state": state.get("state", "open"),
+                    "service": service.get("name", "") if service is not None else "",
+                    "product": service.get("product", "") if service is not None else "",
+                    "version": service.get("version", "") if service is not None else "",
+                    "extrainfo": service.get("extrainfo", "") if service is not None else "",
+                }
+            )
+
+    if not ports:
+        raise NmapNoDataError(f"No open ports found for {ip}")
 
     return {
         "ip": ip,
         "hostnames": hostnames,
+        "os": os_name,
+        "ports": ports,
     }
