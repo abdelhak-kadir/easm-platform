@@ -14,7 +14,7 @@ type Props = {
   selectedAssetId?: number | null;
   activeScanCount: number;
   onSelect: (asset: Asset) => void;
-  onCreate: (value: string, assetType: string) => Promise<Asset>;
+  onCreate: (value: string, assetType?: string) => Promise<Asset>;
 };
 
 export default function Sidebar({

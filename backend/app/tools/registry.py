@@ -33,6 +33,8 @@ from app.tools.httpx import parse as httpx_parse
 from app.tools.httpx import scan as httpx_scan
 from app.tools.merklemap import parse as merklemap_parse
 from app.tools.merklemap import scan as merklemap_scan
+from app.tools.nmap import parse as nmap_parse
+from app.tools.nmap import scan as nmap_scan
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
@@ -182,6 +184,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=httpx_scan.run,
         parse=httpx_parse.parse,
         asset_types=frozenset({AssetType.SUBDOMAIN, AssetType.IP}),
+    ),
+    ToolName.NMAP: ToolSpec(
+        tool=ToolName.NMAP,
+        run=nmap_scan.run,
+        parse=nmap_parse.parse,
+        asset_types=frozenset({AssetType.IP}),
     ),
 }
 
