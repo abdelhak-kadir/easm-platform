@@ -80,6 +80,11 @@ def run_tool_scan(self, job_id: int):
         if job is None:
             raise ValueError(f"ScanJob {job_id} not found")
 
+        # Skip jobs cancelled by the user while still queued
+        if job.status == ScanStatus.FAILED and job.error_message == "Cancelled by user":
+            _logger.info("Job %d was cancelled — skipping", job_id)
+            return {"job_id": job_id, "status": "cancelled"}
+
         asset = db.get(Asset, job.asset_id)
         if asset is None:
             raise ValueError(f"Asset {job.asset_id} not found")

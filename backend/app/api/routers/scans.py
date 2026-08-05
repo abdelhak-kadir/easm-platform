@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
 
@@ -144,6 +146,25 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
         )
 
     return {"created": created}
+
+
+@router.post("/{job_id}/cancel")
+def cancel_scan_job(job_id: int, db: DBSession):
+    """Cancel a PENDING or RUNNING scan job. Sets it to FAILED with a
+    user-friendly message; the Celery worker skips cancelled jobs."""
+    job = db.get(ScanJob, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Scan job not found")
+    if job.status not in (ScanStatus.PENDING, ScanStatus.RUNNING):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a job with status '{job.status}'",
+        )
+    job.status = ScanStatus.FAILED
+    job.error_message = "Cancelled by user"
+    job.completed_at = datetime.now(UTC)
+    db.commit()
+    return _serialize_job(db, job)
 
 
 @router.post("/{tool}/{asset_id}")
@@ -317,6 +338,7 @@ _DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
         ToolName.THEHARVESTER,
         ToolName.SUBFINDER,
         ToolName.AMASS,
+        ToolName.MERKLEMAP,
     }
 )
 

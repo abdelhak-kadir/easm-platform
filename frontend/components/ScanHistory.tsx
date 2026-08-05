@@ -111,6 +111,26 @@ export default function ScanHistory({
                 >
                   {style.label}
                 </span>
+
+                {/* Cancel button — only for active jobs */}
+                {isRunning && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetch(`${apiBase}/scans/${j.id}/cancel`, { method: "POST" })
+                        .then(() => loadJobs());
+                    }}
+                    className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full shrink-0 transition-colors"
+                    style={{
+                      color: "var(--critical)",
+                      background: "var(--critical-dim)",
+                      border: "1px solid var(--critical)",
+                    }}
+                    title="Annuler cette analyse"
+                  >
+                    ✕
+                  </button>
+                )}
               </button>
 
               {/* Spawned asset chain */}
