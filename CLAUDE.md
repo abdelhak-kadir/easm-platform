@@ -23,19 +23,22 @@ common `easm-base` image with system-level recon deps (`dnsutils`, `openssl`,
 
 ---
 
-## Data Model (4 core tables)
+## Data Model (5 core tables)
 
 ```
 Asset ──* ScanJob ──* ScanResult ──* Finding
-         (spawned_job_id → ScanJob — self-referential chain link)
+ │         (spawned_job_id → ScanJob — self-referential chain link)
+ │
+ └── DiscoveryRun (wave-based discovery campaign tracking)
 ```
 
 | Model | Purpose |
 |---|---|
-| `Asset` | A discovered target: `value` + `asset_type` (`domain`/`subdomain`/`ip`). Unique on `(value, asset_type)`. |
+| `Asset` | A discovered target: `value` + `asset_type` (`domain`/`subdomain`/`ip`/`email`/`service`/`technology`). Unique on `(value, asset_type)`. Has `status` (`pending`/`running`/`done`) and optional `discovery_run_id` FK for wave tracking. |
 | `ScanJob` | One tool run against one asset. Status: `pending → running → completed/failed`. Tracks `spawned_asset_id`/`spawned_job_id` for chained scans. |
 | `ScanResult` | Versioned snapshot of a tool's raw JSON output. Re-scanning creates version N+1 — powers future result diffing. |
 | `Finding` | Structured facts extracted from a `ScanResult`: `finding_type`, `severity`, JSONB `data`. |
+| `DiscoveryRun` | Tracks one complete discovery campaign: `root_asset_id`, `round_number`, `max_rounds` (default 5), `current_round_asset_ids` (JSONB), `status` (`running`/`completed`/`max_rounds_reached`). Foundation for §2 wave orchestrator. |
 
 ### `finding_type` normalization
 
@@ -80,13 +83,17 @@ Handled generically in `app/tasks.py::_spawn_chained_scan`.
 | Tool | Status | Asset Types | Notes |
 |---|---|---|---|
 | WHOIS | ✅ Complete | Domain, Subdomain | Chains to Shodan via DNS A-record |
-| Shodan | ✅ Complete | IP | Chains to WHOIS via rDNS/PTR cache |
+| Shodan | ✅ Complete | IP | Chains to WHOIS via rDNS/PTR cache; human-gated IP suggestions via SuggestAssetsPanel |
 | Reverse DNS | ✅ Complete | IP | Internal + chaining support; chains to WHOIS |
 | Email Security | ✅ Complete | Domain, Subdomain | SPF/DKIM/DMARC checks |
 | theHarvester | ✅ Complete | Domain, Subdomain | crt.sh API + CLI subprocess; human-gated host acceptance via SuggestHostsPanel |
+| Censys | ✅ Complete | IP | Host API v2; chains to WHOIS via rDNS/PTR cache |
+| Subfinder | ✅ Complete | Domain, Subdomain | CLI subprocess; passive subdomain enumeration |
+| Amass | ✅ Complete | Domain, Subdomain | CLI subprocess; passive subdomain enumeration |
+| MerkleMap | ✅ Complete | Domain, Subdomain | API-based certificate transparency search |
+| HTTPX | ✅ Complete | Subdomain, IP | CLI binary; HTTP probe + technology fingerprinting |
 | Nmap | ⬜ Planned | IP | Will need privileged container |
-| Censys | ⬜ Planned | IP | |
-| HIBP | ⬜ Planned | Email | |
+| HIBP | ⬜ Planned | Email | Have I Been Pwned API |
 
 ---
 
@@ -97,7 +104,7 @@ A completed tool can spawn exactly one follow-up tool on a derived asset:
 - Shodan resolves IP → domain (cached rDNS) → auto-queues WHOIS
 - Reverse DNS resolves IP → domain → auto-queues WHOIS
 
-theHarvester uses a **human-gated** acceptance pattern instead of auto-chaining:
+theHarvester, Subfinder, Amass, and MerkleMap use a **human-gated** acceptance pattern instead of auto-chaining:
 - Discovered subdomains/hosts are surfaced via `GET /scans/{job_id}/suggest-discovered`
 - The user reviews and accepts candidates via `POST /scans/suggest-discovered/accept`
 - Accepted hosts become SUBDOMAIN Assets and trigger the full tool suite
@@ -205,10 +212,19 @@ docker compose up -d        # postgres, redis, backend, celery_worker
 
 ---
 
-## Remaining Work (priority order)
+## Current State (August 2026)
 
-1. Nmap, Censys, HIBP — completing the tool suite
-2. Full wave-based orchestration (generalize chaining — replace point-to-point with schedule_round/collect_round)
+### Done
+- ✅ §1 schema foundation: `AssetStatus`, extended `AssetType`, `DiscoveryRun` table, `Asset.status` + `discovery_run_id`
+- ✅ 10/12 tools implemented (WHOIS, Shodan, Reverse DNS, Email Security, theHarvester, Censys, Subfinder, Amass, MerkleMap, HTTPX)
+- ✅ Point-to-point chaining: WHOIS↔Shodan, Reverse DNS→WHOIS, Censys→WHOIS
+- ✅ Human-gated discovery: theHarvester/Subfinder/Amass/MerkleMap → SuggestHostsPanel
+- ✅ `finding_type` normalization: `host_info`, `open_port` cross-tool renderers
+
+### Remaining Work (priority order)
+
+1. Nmap, HIBP — completing the tool suite (2 remaining)
+2. Full wave-based orchestration (generalize chaining — replace point-to-point with schedule_round/collect_round via DiscoveryRun)
 3. Result diffing between ScanResult versions
 4. Risk scoring / CVE correlation beyond Shodan CVSS passthrough
 5. Frontend containerization + frontend test suite
