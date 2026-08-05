@@ -1,15 +1,28 @@
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
 
+export type AssetStatus = "pending" | "running" | "done";
+
+export type AssetType =
+  | "domain"
+  | "subdomain"
+  | "ip"
+  | "email"
+  | "service"
+  | "technology";
+
 export interface Asset {
   id: number;
   value: string;
   asset_type: string;
+  status: AssetStatus;
+  discovery_run_id: number | null;
 }
 
 export interface ScanJob {
   id: number;
   tool: string;
   status: string;
+  error_message?: string | null;
   created_at?: string;
   completed_at?: string;
   spawned_asset_id?: number | null;
@@ -32,27 +45,6 @@ export interface ScanResults {
   status: string;
   version: number | null;
   findings: Finding[];
-}
-
-
-export interface DashboardScan {
-  id: number;
-  tool: string;
-  status: string;
-  asset_id: number;
-  asset_value: string;
-  asset_type: string;
-  created_at?: string;
-  started_at?: string;
-  completed_at?: string;
-  error_message?: string | null;
-}
-
-// GET /scans/stats
-export interface ScanStats {
-  by_status: Record<string, number>;
-  total_assets: number;
-  total_scans: number;
 }
 
 // GET /scans/{job_id}/suggest-assets

@@ -2,61 +2,72 @@
 
 :root {
   /* Surfaces */
-  --ink: #F7F8FA;        /* page background */
-  --panel: #FFFFFF;      /* card / panel background */
-  --panel-alt: #F1F3F5;  /* hover state, secondary surface */
-  --hairline: #E4E8EC;   /* borders */
+  --canvas: #f2f0eb;
+  --panel: #ffffff;
+  --panel-dim: #f9f7f4;
+  --surface-deep: #1E3932;
+  --border: #e2ddd6;
+
+  /* Brand greens */
+  --brand-primary: #006241;
+  --brand-accent: #00754A;
+  --brand-accent-hover: #005a3a;
+  --brand-dim: rgba(0, 98, 65, 0.08);
 
   /* Text */
-  --text: #101828;       /* primary text */
-  --muted: #667085;      /* secondary text */
-  --faint: #98A2B3;      /* tertiary text, placeholders */
+  --text-primary: rgba(0, 0, 0, 0.87);
+  --text-secondary: rgba(0, 0, 0, 0.58);
+  --text-on-dark: rgba(255, 255, 255, 1);
+  --text-on-dark-soft: rgba(255, 255, 255, 0.70);
 
-  /* Brand */
-  --signal: #0D9488;     /* teal-600, single brand accent */
-  --signal-hover: #0F766E;
-  --signal-dim: #CCFBF1; /* light teal tint — selection, active bg */
+  /* Status / Severity */
+  --critical: #C82014;
+  --critical-dim: rgba(200, 32, 20, 0.08);
+  --high: #D97706;
+  --high-dim: rgba(217, 119, 6, 0.08);
+  --medium: #CA8A04;
+  --medium-dim: rgba(202, 138, 4, 0.08);
+  --low: #2563EB;
+  --low-dim: rgba(37, 99, 235, 0.08);
+  --info: rgba(0, 0, 0, 0.58);
+  --info-dim: rgba(0, 0, 0, 0.04);
+  --success: #00754A;
+  --success-dim: rgba(0, 117, 74, 0.08);
 
-  /* Status */
-  --danger: #D92D20;
-  --danger-dim: #FEF3F2;
-  --warning: #DC6803;
-  --warning-dim: #FFFAEB;
-  --success: #079455;
-  --success-dim: #ECFDF3;
-
-  /* Dark surface reserved for raw/code data inside light cards */
-  --code-bg: #0B0F14;
-  --code-text: #C7D0DA;
-  --code-hairline: #232B36;
-
+  /* Radii */
   --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  --radius: 12px;
+  --radius-pill: 50px;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
-  --shadow-md: 0 4px 14px rgba(16, 24, 40, 0.08);
+  /* Shadows — layered whisper system */
+  --shadow-card: 0 0 0.5px rgba(0, 0, 0, 0.14), 0 1px 1px rgba(0, 0, 0, 0.24);
+  --shadow-elevated: 0 0 6px rgba(0, 0, 0, 0.14), 0 8px 12px rgba(0, 0, 0, 0.10);
+
+  /* Code surface (terminal blocks) */
+  --code-bg: #0d1117;
+  --code-text: #c9d1d9;
+  --code-border: #21262d;
 }
 
 * {
-  border-color: var(--hairline);
+  border-color: var(--border);
 }
 
 html,
 body {
-  background: var(--ink);
-  color: var(--text);
-  font-family: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  background: var(--canvas);
+  color: var(--text-primary);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6, nav, button {
-  font-family: var(--font-manrope), var(--font-plex-sans), ui-sans-serif, sans-serif;
+  font-family: var(--font-manrope), var(--font-inter), ui-sans-serif, sans-serif;
 }
 
 ::selection {
-  background: var(--signal-dim);
-  color: var(--text);
+  background: var(--brand-dim);
+  color: var(--text-primary);
 }
 
 input:focus {
@@ -64,116 +75,224 @@ input:focus {
 }
 
 :focus-visible {
-  outline: 2px solid var(--signal);
+  outline: 2px solid var(--brand-accent);
   outline-offset: 2px;
 }
 
+/* ── component classes ────────────────────────────────────────────────── */
+
 @layer components {
   .mono {
-    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-family: var(--font-inter), ui-monospace, monospace;
+    font-feature-settings: "tnum";
   }
 
   .eyebrow {
     font-family: var(--font-manrope), sans-serif;
-    @apply text-[11px] font-semibold uppercase tracking-[0.08em];
-    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
   }
 
+  /* Card panel — 12px radius + layered whisper shadow */
   .panel {
     background: var(--panel);
-    border: 1px solid var(--hairline);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-card);
   }
 
   .card-pad {
-    @apply p-5;
+    padding: 1.25rem;
   }
 
+  /* Primary filled pill */
   .btn-primary {
     font-family: var(--font-manrope), sans-serif;
-    @apply text-sm font-semibold px-4 py-2.5 transition-colors;
-    background: var(--signal);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    padding: 7px 20px;
+    transition: all 0.2s ease;
+    background: var(--brand-accent);
     color: #ffffff;
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--brand-accent);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--signal-hover);
+    background: var(--brand-accent-hover);
+    border-color: var(--brand-accent-hover);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: scale(0.95);
   }
   .btn-primary:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
   }
 
+  /* Ghost outline pill */
   .btn-ghost {
     font-family: var(--font-manrope), sans-serif;
-    @apply text-sm font-medium px-3.5 py-2.5 transition-colors;
-    background: var(--panel);
-    border: 1px solid var(--hairline);
-    color: var(--text);
-    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    padding: 6px 18px;
+    transition: all 0.2s ease;
+    background: transparent;
+    border: 1px solid var(--text-primary);
+    color: var(--text-primary);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
   }
   .btn-ghost:hover {
-    border-color: var(--signal);
-    color: var(--signal);
-    background: var(--signal-dim);
+    border-color: var(--brand-accent);
+    color: var(--brand-accent);
+    background: var(--brand-dim);
+  }
+  .btn-ghost:active {
+    transform: scale(0.95);
+  }
+
+  /* Outlined on dark surface */
+  .btn-outline-light {
+    font-family: var(--font-manrope), sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    padding: 6px 18px;
+    transition: all 0.2s ease;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.70);
+    color: var(--text-on-dark);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .btn-outline-light:hover {
+    background: rgba(255, 255, 255, 0.10);
+  }
+  .btn-outline-light:active {
+    transform: scale(0.95);
+  }
+
+  /* White filled on dark surface */
+  .btn-white {
+    font-family: var(--font-manrope), sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    padding: 7px 20px;
+    transition: all 0.2s ease;
+    background: #ffffff;
+    color: var(--brand-accent);
+    border: 1px solid #ffffff;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .btn-white:active {
+    transform: scale(0.95);
+  }
+
+  /* Dark filled pill (for dark surfaces) */
+  .btn-dark {
+    font-family: var(--font-manrope), sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    padding: 7px 20px;
+    transition: all 0.2s ease;
+    background: var(--surface-deep);
+    color: var(--text-on-dark);
+    border: 1px solid var(--surface-deep);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+  }
+  .btn-dark:active {
+    transform: scale(0.95);
   }
 
   .field-input {
-    font-family: var(--font-plex-sans), sans-serif;
-    @apply text-sm px-3.5 py-2.5 w-full transition-colors;
+    font-family: var(--font-inter), ui-sans-serif, sans-serif;
+    font-size: 14px;
+    padding: 8px 14px;
+    width: 100%;
     background: var(--panel);
-    border: 1px solid var(--hairline);
-    color: var(--text);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
     border-radius: var(--radius-sm);
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
   .field-input:focus {
-    border-color: var(--signal);
-    box-shadow: 0 0 0 3px var(--signal-dim);
+    border-color: var(--brand-accent);
+    box-shadow: 0 0 0 3px var(--brand-dim);
   }
   .field-input::placeholder {
-    color: var(--faint);
+    color: var(--text-secondary);
   }
 
+  /* Dark code/terminal block */
   .code-panel {
     background: var(--code-bg);
-    border: 1px solid var(--code-hairline);
+    border: 1px solid var(--code-border);
     color: var(--code-text);
     border-radius: var(--radius-sm);
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
   }
 
+  /* Live / idle status dot */
   .status-dot {
-    @apply inline-block w-2 h-2 rounded-full shrink-0;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
   }
   .status-dot--live {
-    background: var(--signal);
-    box-shadow: 0 0 0 3px var(--signal-dim);
+    background: var(--brand-accent);
+    box-shadow: 0 0 0 3px var(--brand-dim);
     animation: pulse-dot 2s ease-in-out infinite;
   }
   .status-dot--idle {
-    background: #98A2B3;
+    background: rgba(0, 0, 0, 0.30);
+  }
+
+  /* Stat tile for StatsBanner */
+  .stat-tile {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+  }
+
+  /* Severity pill badge */
+  .severity-pill {
+    font-family: var(--font-manrope), sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 12px;
+    border-radius: var(--radius-pill);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 }
 
+/* ── keyframes ──────────────────────────────────────────────────────────── */
+
 @keyframes pulse-dot {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.55;
-    transform: scale(0.85);
-  }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
 }
 
 @keyframes sweep {
-  0% {
-    transform: translateX(-120%);
-  }
-  100% {
-    transform: translateX(220%);
-  }
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
 }
+
 .scan-sweep {
   position: relative;
   overflow: hidden;
@@ -183,7 +302,7 @@ input:focus {
   position: absolute;
   inset: 0;
   width: 30%;
-  background: linear-gradient(90deg, transparent, var(--signal-dim), transparent);
+  background: linear-gradient(90deg, transparent, var(--brand-dim), transparent);
   animation: sweep 1.4s linear infinite;
 }
 

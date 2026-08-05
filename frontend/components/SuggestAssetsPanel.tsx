@@ -146,7 +146,7 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
       <div className="mb-6">
         <p className="eyebrow mb-2">Adresses IP liées</p>
         <div className="panel px-5 py-4">
-          <p className="text-sm mb-3" style={{ color: "var(--muted)" }}>
+          <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>
             Découvrir d&apos;autres adresses IP appartenant potentiellement à la même
             organisation ou au même bloc réseau que cette cible.
           </p>
@@ -160,9 +160,9 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
           </div>
           <p
             className="text-xs mt-2.5"
-            style={{ color: "var(--faint)" }}
+            style={{ color: "var(--text-secondary)" }}
           >
-            Ces suggestions nécessitent une validation humaine — elles ne sont pas
+            Ces suggestions nécessitent une validation humaine elles ne sont pas
             ajoutées automatiquement.
           </p>
         </div>
@@ -176,12 +176,12 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
       <div className="mb-6">
         <p className="eyebrow mb-2">Adresses IP liées</p>
         <div className="panel px-5 py-5 text-center">
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Recherche en cours
             {mode === "org" ? " par organisation" : " par bloc réseau"}…
           </p>
           <div className="mt-3 flex justify-center">
-            <span className="inline-block w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "var(--hairline)", borderTopColor: "var(--signal)" }} />
+            <span className="inline-block w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "var(--border)", borderTopColor: "var(--brand-accent)" }} />
           </div>
         </div>
       </div>
@@ -195,9 +195,9 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
         <p className="eyebrow mb-2">Adresses IP liées</p>
         <div
           className="panel px-5 py-4"
-          style={{ borderColor: "var(--danger)", background: "var(--danger-dim)" }}
+          style={{ borderColor: "var(--critical)", background: "var(--critical-dim)" }}
         >
-          <p className="text-sm font-medium mb-2" style={{ color: "var(--danger)" }}>
+          <p className="text-sm font-medium mb-2" style={{ color: "var(--critical)" }}>
             {error || "Une erreur est survenue lors de la recherche."}
           </p>
           <div className="flex gap-2">
@@ -222,7 +222,7 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
         {data.is_shared_hosting_warning && (
           <div
             className="panel px-4 py-2.5 mb-2 text-xs font-medium flex items-start gap-2"
-            style={{ borderColor: "var(--warning)", background: "var(--warning-dim)", color: "var(--warning)" }}
+            style={{ borderColor: "var(--high)", background: "var(--high-dim)", color: "var(--high)" }}
           >
             <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3l9.66 16.5H2.34L12 3z" />
@@ -238,11 +238,11 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
 
         <div className="panel">
           {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--hairline)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
             <div>
               <p className="text-sm font-semibold">
                 {candidates.length} IP trouvée{candidates.length !== 1 ? "s" : ""}
-                <span className="text-xs font-normal ml-1.5" style={{ color: "var(--muted)" }}>
+                <span className="text-xs font-normal ml-1.5" style={{ color: "var(--text-secondary)" }}>
                   {data.by === "org" ? `org: ${data.query_value}` : `net: ${data.query_value}`}
                 </span>
               </p>
@@ -250,11 +250,11 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
             <div className="flex items-center gap-2">
               {eligibleCount > 0 && (
                 <>
-                  <button onClick={selectAll} className="text-xs font-medium" style={{ color: "var(--signal)" }}>
+                  <button onClick={selectAll} className="text-xs font-medium" style={{ color: "var(--brand-accent)" }}>
                     Tout sélectionner
                   </button>
-                  <span style={{ color: "var(--hairline)" }}>·</span>
-                  <button onClick={deselectAll} className="text-xs font-medium" style={{ color: "var(--muted)" }}>
+                  <span style={{ color: "var(--border)" }}>·</span>
+                  <button onClick={deselectAll} className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
                     Désélectionner
                   </button>
                 </>
@@ -265,12 +265,12 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
           {/* Candidate list */}
           {candidates.length === 0 ? (
             <div className="px-5 py-6 text-center">
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                 Aucune autre IP trouvée pour cette recherche.
               </p>
             </div>
           ) : (
-            <div className="divide-y" style={{ borderColor: "var(--hairline)", maxHeight: 420, overflowY: "auto" }}>
+            <div className="divide-y" style={{ borderColor: "var(--border)", maxHeight: 420, overflowY: "auto" }}>
               {candidates.map((c) => (
                 <CandidateRow
                   key={c.ip}
@@ -286,14 +286,14 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
           {error && (
             <div
               className="px-4 py-2 mx-5 mb-3 rounded-md text-xs font-medium"
-              style={{ color: "var(--danger)", background: "var(--danger-dim)" }}
+              style={{ color: "var(--critical)", background: "var(--critical-dim)" }}
             >
               {error}
             </div>
           )}
 
           {/* Action bar */}
-          <div className="flex items-center justify-between gap-2 px-5 py-3 border-t" style={{ borderColor: "var(--hairline)" }}>
+          <div className="flex items-center justify-between gap-2 px-5 py-3 border-t" style={{ borderColor: "var(--border)" }}>
             <button onClick={reset} className="btn-ghost text-sm">
               Annuler
             </button>
@@ -316,11 +316,11 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
       <div className="mb-6">
         <p className="eyebrow mb-2">Adresses IP liées</p>
         <div className="panel px-5 py-5 text-center">
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Création des nouvelles cibles en cours…
           </p>
           <div className="mt-3 flex justify-center">
-            <span className="inline-block w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "var(--hairline)", borderTopColor: "var(--signal)" }} />
+            <span className="inline-block w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "var(--border)", borderTopColor: "var(--brand-accent)" }} />
           </div>
         </div>
       </div>
@@ -344,16 +344,16 @@ export default function SuggestAssetsPanel({ apiBase, jobId, onAssetsAccepted }:
               ? `${createdCount} nouvelle${createdCount !== 1 ? "s" : ""} cible${createdCount !== 1 ? "s" : ""} ajoutée${createdCount !== 1 ? "s" : ""}`
               : "Aucune nouvelle cible ajoutée"}
             {alreadyExisted > 0 && (
-              <span className="font-normal ml-1" style={{ color: "var(--muted)" }}>
+              <span className="font-normal ml-1" style={{ color: "var(--text-secondary)" }}>
                 ({alreadyExisted} déjà suivie{alreadyExisted !== 1 ? "s" : ""})
               </span>
             )}
           </p>
-          <ul className="text-xs mb-3 space-y-0.5" style={{ color: "var(--muted)" }}>
+          <ul className="text-xs mb-3 space-y-0.5" style={{ color: "var(--text-secondary)" }}>
             {acceptedResult.created.map((r) => (
               <li key={r.asset_id} className="mono">
                 {r.value}
-                {r.created ? " — nouvelle cible, analyse lancée" : " — déjà suivie"}
+                {r.created ? " nouvelle cible, analyse lancée" : " déjà suivie"}
               </li>
             ))}
           </ul>
@@ -384,7 +384,7 @@ function CandidateRow({
   return (
     <label
       className={`flex items-start gap-3 px-5 py-3 transition-colors ${
-        disabled ? "cursor-default" : "cursor-pointer hover:bg-[var(--panel-alt)]"
+        disabled ? "cursor-default" : "cursor-pointer hover:bg-[var(--panel-dim)]"
       }`}
       style={{
         opacity: disabled ? 0.55 : 1,
@@ -396,7 +396,7 @@ function CandidateRow({
         disabled={disabled}
         onChange={onToggle}
         className="mt-0.5 shrink-0"
-        style={{ accentColor: "var(--signal)" }}
+        style={{ accentColor: "var(--brand-accent)" }}
       />
 
       <div className="min-w-0 flex-1">
@@ -406,7 +406,7 @@ function CandidateRow({
           {candidate.is_source && (
             <span
               className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-              style={{ color: "var(--signal)", background: "var(--signal-dim)" }}
+              style={{ color: "var(--brand-accent)", background: "var(--brand-dim)" }}
             >
               CIBLE SOURCE
             </span>
@@ -414,7 +414,7 @@ function CandidateRow({
           {candidate.already_tracked && (
             <span
               className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-              style={{ color: "var(--muted)", background: "var(--panel-alt)" }}
+              style={{ color: "var(--text-secondary)", background: "var(--panel-dim)" }}
             >
               DÉJÀ SUIVIE
             </span>
@@ -422,17 +422,17 @@ function CandidateRow({
         </div>
 
         {/* Details */}
-        <div className="text-xs space-y-0.5" style={{ color: "var(--muted)" }}>
+        <div className="text-xs space-y-0.5" style={{ color: "var(--text-secondary)" }}>
           {candidate.org && (
             <p>
               Organisation&nbsp;:{" "}
-              <span style={{ color: "var(--text)" }}>{candidate.org}</span>
+              <span style={{ color: "var(--text-primary)" }}>{candidate.org}</span>
             </p>
           )}
           {candidate.hostnames.length > 0 && (
             <p>
               Noms d&apos;hôte&nbsp;:{" "}
-              <span style={{ color: "var(--text)" }}>
+              <span style={{ color: "var(--text-primary)" }}>
                 {candidate.hostnames.slice(0, 5).join(", ")}
                 {candidate.hostnames.length > 5 && ` (+${candidate.hostnames.length - 5})`}
               </span>
@@ -441,7 +441,7 @@ function CandidateRow({
           {candidate.ports.length > 0 && (
             <p>
               Ports&nbsp;:{" "}
-              <span style={{ color: "var(--text)" }}>
+              <span style={{ color: "var(--text-primary)" }}>
                 {candidate.ports.slice(0, 12).join(", ")}
                 {candidate.ports.length > 12 && ` (+${candidate.ports.length - 12})`}
               </span>
@@ -450,7 +450,7 @@ function CandidateRow({
           {candidate.products.length > 0 && (
             <p>
               Produits&nbsp;:{" "}
-              <span style={{ color: "var(--text)" }}>
+              <span style={{ color: "var(--text-primary)" }}>
                 {candidate.products.slice(0, 5).join(", ")}
                 {candidate.products.length > 5 && ` (+${candidate.products.length - 5})`}
               </span>

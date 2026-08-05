@@ -25,10 +25,14 @@ from sqlalchemy.orm import Session
 from app.models import Asset, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
 from app.tools.amass import parse as amass_parse
 from app.tools.amass import scan as amass_scan
+from app.tools.censys import parse as censys_parse
+from app.tools.censys import scan as censys_scan
 from app.tools.email_security import parse as email_security_parse
 from app.tools.email_security import scan as email_security_scan
 from app.tools.httpx import parse as httpx_parse
 from app.tools.httpx import scan as httpx_scan
+from app.tools.merklemap import parse as merklemap_parse
+from app.tools.merklemap import scan as merklemap_scan
 from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
@@ -116,6 +120,15 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
     ),
+    ToolName.CENSYS: ToolSpec(
+        tool=ToolName.CENSYS,
+        run=censys_scan.run,
+        parse=censys_parse.parse,
+        asset_types=frozenset({AssetType.IP}),
+        spawns=ToolName.WHOIS,
+        spawn_asset_type=AssetType.DOMAIN,
+        resolve_spawn_value=_resolve_ip_to_domain,
+    ),
     ToolName.WHOIS: ToolSpec(
         tool=ToolName.WHOIS,
         run=whois_scan.run,
@@ -156,6 +169,12 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         tool=ToolName.AMASS,
         run=amass_scan.run,
         parse=amass_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.MERKLEMAP: ToolSpec(
+        tool=ToolName.MERKLEMAP,
+        run=merklemap_scan.run,
+        parse=merklemap_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
     ),
     ToolName.HTTPX: ToolSpec(

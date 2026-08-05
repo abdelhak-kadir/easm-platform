@@ -46,9 +46,9 @@ export default function AssetSearch({
 
   return (
     <div className="panel flex flex-col" style={{ maxHeight: "calc(100vh - 7rem)" }}>
-      <div className="p-4" style={{ borderBottom: "1px solid var(--hairline)" }}>
+      <div className="p-4" style={{ borderBottom: "1px solid var(--border)" }}>
         <p className="eyebrow mb-1">Que souhaitez-vous vérifier ?</p>
-        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+        <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
           Une adresse de site web ou une IP de serveur à analyser pour détecter des failles de sécurité.
         </p>
         <input
@@ -74,7 +74,7 @@ export default function AssetSearch({
           </button>
         </div>
         {error && (
-          <p className="text-xs mt-2" style={{ color: "var(--danger)" }}>
+          <p className="text-xs mt-2" style={{ color: "var(--critical)" }}>
             {error}
           </p>
         )}
@@ -82,7 +82,7 @@ export default function AssetSearch({
 
       <div className="overflow-y-auto flex-1">
         {filtered.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-center" style={{ color: "var(--muted)" }}>
+          <p className="px-4 py-6 text-sm text-center" style={{ color: "var(--text-secondary)" }}>
             {assets.length === 0 ? "Aucune cible pour le moment." : "Aucune cible ne correspond à votre recherche."}
           </p>
         ) : (
@@ -95,22 +95,22 @@ export default function AssetSearch({
                     onClick={() => onSelect(a)}
                     className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 transition-colors"
                     style={{
-                      background: active ? "var(--signal-dim)" : "transparent",
-                      borderLeft: `3px solid ${active ? "var(--signal)" : "transparent"}`,
+                      background: active ? "var(--brand-dim)" : "transparent",
+                      borderLeft: `3px solid ${active ? "var(--brand-accent)" : "transparent"}`,
                     }}
                     onMouseEnter={(e) => {
-                      if (!active) e.currentTarget.style.background = "var(--panel-alt)";
+                      if (!active) e.currentTarget.style.background = "var(--panel-dim)";
                     }}
                     onMouseLeave={(e) => {
                       if (!active) e.currentTarget.style.background = "transparent";
                     }}
                   >
-                    <span className="mono text-sm truncate" style={{ color: "var(--text)" }}>
+                    <span className="mono text-sm truncate" style={{ color: "var(--text-primary)" }}>
                       {a.value}
                     </span>
                     <span
                       className="text-[10px] font-semibold uppercase tracking-wide shrink-0 px-1.5 py-0.5 rounded"
-                      style={{ color: "var(--muted)", background: "var(--panel-alt)" }}
+                      style={{ color: "var(--text-secondary)", background: "var(--panel-dim)" }}
                     >
                       {TYPE_LABEL[a.asset_type] || a.asset_type}
                     </span>

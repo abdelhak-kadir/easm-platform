@@ -26,10 +26,10 @@ export default function SeverityChart({ findings }: SeverityChartProps) {
           const color = SEVERITY_HEX[sev];
           return (
             <div key={sev} className="flex items-center gap-3">
-              <span className="w-16 text-xs font-medium" style={{ color: "var(--muted)" }}>
+              <span className="w-16 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
                 {severityLabel(sev)}
               </span>
-              <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: "var(--panel-alt)" }}>
+              <div className="flex-1 rounded-full h-2 overflow-hidden" style={{ background: "var(--panel-dim)" }}>
                 <div
                   className="h-2 rounded-full transition-all"
                   style={{
@@ -39,7 +39,7 @@ export default function SeverityChart({ findings }: SeverityChartProps) {
                   }}
                 />
               </div>
-              <span className="w-6 text-xs text-right tabular-nums" style={{ color: "var(--muted)" }}>
+              <span className="w-6 text-xs text-right tabular-nums" style={{ color: "var(--text-secondary)" }}>
                 {count}
               </span>
             </div>

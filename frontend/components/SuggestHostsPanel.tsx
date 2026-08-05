@@ -132,7 +132,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
       <div className="mb-6">
         <p className="eyebrow mb-2">Sous-domaines découverts</p>
         <div className="panel px-5 py-5 text-center">
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
             Chargement des résultats…
           </p>
         </div>
@@ -147,9 +147,9 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
         <p className="eyebrow mb-2">Sous-domaines découverts</p>
         <div
           className="panel px-5 py-4"
-          style={{ borderColor: "var(--danger)", background: "var(--danger-dim)" }}
+          style={{ borderColor: "var(--critical)", background: "var(--critical-dim)" }}
         >
-          <p className="text-sm font-medium mb-2" style={{ color: "var(--danger)" }}>
+          <p className="text-sm font-medium mb-2" style={{ color: "var(--critical)" }}>
             {error || "Une erreur est survenue."}
           </p>
           <button onClick={load} className="btn-ghost text-sm">
@@ -180,16 +180,16 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
               ? `${createdCount} nouvelle${createdCount !== 1 ? "s" : ""} cible${createdCount !== 1 ? "s" : ""} ajoutée${createdCount !== 1 ? "s" : ""}`
               : "Aucune nouvelle cible ajoutée"}
             {alreadyExisted > 0 && (
-              <span className="font-normal ml-1" style={{ color: "var(--muted)" }}>
+              <span className="font-normal ml-1" style={{ color: "var(--text-secondary)" }}>
                 ({alreadyExisted} déjà suivie{alreadyExisted !== 1 ? "s" : ""})
               </span>
             )}
           </p>
-          <ul className="text-xs mb-3 space-y-0.5" style={{ color: "var(--muted)" }}>
+          <ul className="text-xs mb-3 space-y-0.5" style={{ color: "var(--text-secondary)" }}>
             {acceptedResult.created.map((r) => (
               <li key={r.asset_id} className="mono">
                 {r.value}
-                {r.created ? " — nouvelle cible, analyse lancée" : " — déjà suivie"}
+                {r.created ? " nouvelle cible, analyse lancée" : " déjà suivie"}
               </li>
             ))}
           </ul>
@@ -208,12 +208,12 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
       <div className="panel">
         <div
           className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b"
-          style={{ borderColor: "var(--hairline)" }}
+          style={{ borderColor: "var(--border)" }}
         >
           <p className="text-sm font-semibold">
             {data.candidates.length} hôte{data.candidates.length !== 1 ? "s" : ""} trouvé
             {data.candidates.length !== 1 ? "s" : ""}
-            <span className="text-xs font-normal ml-1.5" style={{ color: "var(--muted)" }}>
+            <span className="text-xs font-normal ml-1.5" style={{ color: "var(--text-secondary)" }}>
               via énumération passive
             </span>
           </p>
@@ -222,15 +222,15 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
               <button
                 onClick={selectAll}
                 className="text-xs font-medium"
-                style={{ color: "var(--signal)" }}
+                style={{ color: "var(--brand-accent)" }}
               >
                 Tout sélectionner
               </button>
-              <span style={{ color: "var(--hairline)" }}>·</span>
+              <span style={{ color: "var(--border)" }}>·</span>
               <button
                 onClick={deselectAll}
                 className="text-xs font-medium"
-                style={{ color: "var(--muted)" }}
+                style={{ color: "var(--text-secondary)" }}
               >
                 Désélectionner
               </button>
@@ -239,13 +239,13 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
         </div>
 
         {data.candidates.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-center" style={{ color: "var(--muted)" }}>
+          <p className="px-5 py-6 text-sm text-center" style={{ color: "var(--text-secondary)" }}>
             Aucun sous-domaine découvert pour cette cible.
           </p>
         ) : (
           <div
             className="divide-y"
-            style={{ borderColor: "var(--hairline)", maxHeight: 320, overflowY: "auto" }}
+            style={{ borderColor: "var(--border)", maxHeight: 320, overflowY: "auto" }}
           >
             {data.candidates.map((c) => (
               <label
@@ -253,7 +253,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
                 className={`flex items-center gap-3 px-5 py-2.5 transition-colors ${
                   c.already_tracked
                     ? "cursor-default"
-                    : "cursor-pointer hover:bg-[var(--panel-alt)]"
+                    : "cursor-pointer hover:bg-[var(--panel-dim)]"
                 }`}
                 style={{ opacity: c.already_tracked ? 0.55 : 1 }}
               >
@@ -262,13 +262,13 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
                   checked={selected.has(c.value)}
                   disabled={c.already_tracked}
                   onChange={() => toggleCandidate(c.value, c.already_tracked)}
-                  style={{ accentColor: "var(--signal)" }}
+                  style={{ accentColor: "var(--brand-accent)" }}
                 />
                 <span className="mono text-sm">{c.value}</span>
                 {c.already_tracked && (
                   <span
                     className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-auto"
-                    style={{ color: "var(--muted)", background: "var(--panel-alt)" }}
+                    style={{ color: "var(--text-secondary)", background: "var(--panel-dim)" }}
                   >
                     DÉJÀ SUIVIE
                   </span>
@@ -281,7 +281,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
         {error && (
           <div
             className="px-4 py-2 mx-5 mb-3 rounded-md text-xs font-medium"
-            style={{ color: "var(--danger)", background: "var(--danger-dim)" }}
+            style={{ color: "var(--critical)", background: "var(--critical-dim)" }}
           >
             {error}
           </div>
@@ -290,7 +290,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
         {data.candidates.length > 0 && (
           <div
             className="flex items-center justify-end gap-2 px-5 py-3 border-t"
-            style={{ borderColor: "var(--hairline)" }}
+            style={{ borderColor: "var(--border)" }}
           >
             <button
               onClick={accept}
