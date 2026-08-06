@@ -158,4 +158,19 @@ def run_tool_scan(self, job_id: int):
                     spec.spawns,
                     exc_info=True,
                 )
+
+        # If this asset belongs to a DiscoveryRun, poke collect_round so the
+        # wave orchestrator can check whether the round is complete.
+        if asset is not None and asset.discovery_run_id is not None:
+            try:
+                from app.orchestrator import collect_round
+
+                collect_round.apply_async((asset.discovery_run_id,), countdown=3)
+            except Exception:
+                _logger.debug(
+                    "Failed to enqueue collect_round for run %d",
+                    asset.discovery_run_id,
+                    exc_info=True,
+                )
+
         db.close()

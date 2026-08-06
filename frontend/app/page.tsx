@@ -17,6 +17,7 @@ import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 import ToolExplainer from "../components/ToolExplainer";
 import PlainSummary from "../components/PlainSummary";
+import DiscoveryProgress from "../components/DiscoveryProgress";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -36,7 +37,10 @@ export default function Home() {
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set(ALL_SEVERITIES));
   const [activeType, setActiveType] = useState<string | null>(null);
 
+  const [discovering, setDiscovering] = useState(false);
+
   const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
+  const busy = scanning || discovering;
   const activeScanCount = fleetActiveJobs.length;
 
   function selectAsset(a: Asset) {
@@ -83,6 +87,34 @@ export default function Home() {
     refreshFleet();
   }
 
+  async function triggerDiscovery() {
+    if (!asset) return;
+    setDiscovering(true);
+    try {
+      const res = await fetch(`${API_BASE}/scans/discovery/start/${asset.id}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          detail = (await res.json()).detail || "";
+        } catch {
+          // keep empty
+        }
+        throw new Error(detail || `Erreur ${res.status}`);
+      }
+      const data = await res.json();
+      setAsset((prev) => (prev ? { ...prev, discovery_run_id: data.run_id } : null));
+      refreshAssets();
+      setHistoryRefresh((k) => k + 1);
+      refreshFleet();
+    } catch (err: any) {
+      window.alert(err.message || "Échec du lancement de la découverte");
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
   async function loadResults(jobId: number) {
     const res = await fetch(`${API_BASE}/scans/${jobId}/results`);
     if (!res.ok) return;
@@ -97,12 +129,12 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (!asset || !scanning) return;
+    if (!asset || !busy) return;
     const interval = setInterval(() => {
       setHistoryRefresh((k) => k + 1);
     }, 2000);
     return () => clearInterval(interval);
-  }, [asset, scanning]);
+  }, [asset, busy]);
 
   useEffect(() => {
     if (!job) return;
@@ -138,7 +170,7 @@ export default function Home() {
         activeScanCount={activeScanCount}
         selectedAssetValue={asset?.value ?? null}
         onTriggerScan={asset ? triggerScan : undefined}
-        scanning={scanning}
+        scanning={busy}
       />
 
       <div className="flex flex-1" style={{ height: "calc(100vh - 3.5rem)" }}>
@@ -165,31 +197,54 @@ export default function Home() {
           ) : (
             /* ── Asset selected ── */
             <div className="max-w-4xl mx-auto">
-              {/* Asset header + scan button */}
+              {/* Asset header + scan / discovery buttons */}
               <div
                 className="panel flex items-center justify-between px-5 py-4 mb-5"
-                style={scanning ? { position: "relative", overflow: "hidden" } : undefined}
+                style={busy ? { position: "relative", overflow: "hidden" } : undefined}
               >
-                {scanning && <div className="scan-sweep" style={{ position: "absolute", inset: 0 }} />}
+                {busy && <div className="scan-sweep" style={{ position: "absolute", inset: 0 }} />}
                 <div className="relative z-10">
                   <p className="eyebrow mb-1">Cible sélectionnée</p>
                   <p className="mono text-base font-semibold" style={{ color: "var(--text-primary)" }}>
                     {asset.value}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                    {scanning
+                    {busy
                       ? "Analyse en cours — les résultats apparaîtront automatiquement."
-                      : "Lancez une analyse complète pour découvrir les services et vulnérabilités."}
+                      : "Analyse rapide sur cet asset, ou découverte par vagues pour explorer récursivement."}
                   </p>
                 </div>
-                <button
-                  onClick={triggerScan}
-                  disabled={scanning}
-                  className="btn-primary shrink-0 relative z-10"
-                >
-                  {scanning ? "Analyse en cours…" : "Lancer l'analyse"}
-                </button>
+                <div className="flex items-center gap-2 shrink-0 relative z-10">
+                  <button
+                    onClick={triggerScan}
+                    disabled={busy}
+                    className="btn-primary text-sm"
+                  >
+                    {scanning ? "Analyse en cours…" : "Analyse rapide"}
+                  </button>
+                  <button
+                    onClick={triggerDiscovery}
+                    disabled={busy}
+                    className="btn-primary text-sm"
+                    style={{
+                      background: "var(--brand-dim)",
+                      borderColor: "var(--brand-accent)",
+                      color: "var(--brand-accent)",
+                    }}
+                  >
+                    {discovering ? "…" : "Découverte"}
+                  </button>
+                </div>
               </div>
+
+              {/* Discovery progress (wave orchestrator) */}
+              {asset.discovery_run_id != null && (
+                <DiscoveryProgress
+                  apiBase={API_BASE}
+                  runId={asset.discovery_run_id}
+                  onRefreshAssets={refreshAssets}
+                />
+              )}
 
               {/* Scan history */}
               <ScanHistory
@@ -242,6 +297,7 @@ export default function Home() {
                 <SuggestHostsPanel
                   apiBase={API_BASE}
                   jobId={job.id}
+                  discoveryRunId={asset.discovery_run_id}
                   onAssetsAccepted={() => {
                     refreshAssets();
                     setHistoryRefresh((k) => k + 1);

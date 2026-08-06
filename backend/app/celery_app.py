@@ -8,7 +8,7 @@ celery_app = Celery(
     "easm",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=["app.tasks"],
+    include=["app.tasks", "app.orchestrator"],
 )
 
 celery_app.conf.update(

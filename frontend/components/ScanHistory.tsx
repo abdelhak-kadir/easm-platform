@@ -32,7 +32,10 @@ export default function ScanHistory({
   const loadJobs = useCallback(() => {
     if (!asset) return;
     fetch(`${apiBase}/scans/asset/${asset.id}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data: ScanJob[]) => {
         setJobs(data);
         onJobsLoaded?.(data);

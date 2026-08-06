@@ -101,3 +101,16 @@ export interface AcceptDiscoveredResult {
 export interface AcceptDiscoveredResponse {
   created: AcceptDiscoveredResult[];
 }
+
+// GET /scans/discovery/{run_id}
+export interface DiscoveryRunStatus {
+  id: number;
+  root_asset: { id: number | null; value: string | null };
+  round_number: number;
+  max_rounds: number;
+  status: string; // "running" | "completed" | "max_rounds_reached"
+  assets: { total: number; pending: number; running: number; done: number };
+  active_jobs: number;
+  created_at: string | null;
+  completed_at: string | null;
+}

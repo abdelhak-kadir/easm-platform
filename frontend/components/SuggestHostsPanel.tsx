@@ -10,6 +10,7 @@ interface Props {
   apiBase: string;
   jobId: number;
   onAssetsAccepted?: () => void;
+  discoveryRunId?: number | null;
 }
 
 type Phase = "loading" | "error" | "results" | "accepting" | "accepted";
@@ -23,7 +24,7 @@ function extractDetail(body: any): string {
   return "";
 }
 
-export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: Props) {
+export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted, discoveryRunId }: Props) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [data, setData] = useState<SuggestDiscoveredResponse | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -120,6 +121,19 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
     onAssetsAccepted?.();
   }, [apiBase, selected, onAssetsAccepted]);
 
+  const [continuing, setContinuing] = useState(false);
+
+  async function handleContinueDiscovery() {
+    if (!discoveryRunId) return;
+    setContinuing(true);
+    try {
+      await fetch(`${apiBase}/scans/discovery/${discoveryRunId}/continue`, { method: "POST" });
+      onAssetsAccepted?.();
+    } finally {
+      setContinuing(false);
+    }
+  }
+
   const reset = useCallback(() => {
     setSelected(new Set());
     setAcceptedResult(null);
@@ -193,9 +207,20 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted }: 
               </li>
             ))}
           </ul>
-          <button onClick={reset} className="btn-ghost text-sm">
-            Actualiser
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={reset} className="btn-ghost text-sm">
+              Actualiser
+            </button>
+            {discoveryRunId != null && (
+              <button
+                onClick={handleContinueDiscovery}
+                disabled={continuing}
+                className="btn-primary text-sm"
+              >
+                {continuing ? "…" : "Continuer la découverte"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );

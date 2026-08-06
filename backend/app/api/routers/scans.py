@@ -5,7 +5,16 @@ from sqlalchemy import func
 
 from app.api.deps import DBSession
 from app.api.schemas import AcceptDiscoveredAssets, AcceptSuggestedAssets
-from app.models import Asset, AssetStatus, AssetType, ScanJob, ScanResult, ScanStatus, ToolName
+from app.models import (
+    Asset,
+    AssetStatus,
+    AssetType,
+    DiscoveryRun,
+    ScanJob,
+    ScanResult,
+    ScanStatus,
+    ToolName,
+)
 from app.tools.registry import get_tool_spec, tools_for_asset_type
 from app.tools.shodan.org_search import (
     ShodanSearchError,
@@ -146,6 +155,90 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
         )
 
     return {"created": created}
+
+
+# ── Wave-based discovery (orchestrator endpoints) ─────────────────
+
+
+@router.post("/discovery/start/{asset_id}")
+def start_discovery(asset_id: int, db: DBSession, max_rounds: int = 5):
+    """Create a DiscoveryRun and kick off the first wave of scans against
+    *asset_id*. Every applicable tool is queued; spawned assets feed the
+    next round until no new assets are found or *max_rounds* is reached."""
+    from app.orchestrator import create_discovery_run, schedule_round
+
+    try:
+        run = create_discovery_run(db, asset_id, max_rounds)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    schedule_round.delay(run.id)
+    return {
+        "run_id": run.id,
+        "root_asset_id": asset_id,
+        "max_rounds": max_rounds,
+        "status": "started",
+    }
+
+
+@router.get("/discovery/{run_id}")
+def get_discovery(run_id: int, db: DBSession):
+    """Return the current state of a discovery run (round, asset counts,
+    active jobs). The frontend polls this to show progress."""
+    from app.orchestrator import get_run_status
+
+    status = get_run_status(db, run_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="DiscoveryRun not found")
+    return status
+
+
+@router.post("/discovery/{run_id}/continue")
+def continue_discovery(run_id: int, db: DBSession):
+    """Advance a discovery run to the next round after the user has
+    reviewed and accepted human-gated discovered assets.
+
+    Integrates orphan PENDING assets — those created by human-gated
+    acceptance flows (suggest-discovered, suggest-assets) that are not
+    yet tagged with any ``discovery_run_id`` — into this run before
+    scheduling the next round."""
+    from app.orchestrator import schedule_round
+
+    run = db.get(DiscoveryRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="DiscoveryRun not found")
+    if run.status != "running":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot continue a run with status '{run.status}'",
+        )
+
+    # Integrate orphan PENDING assets created by human-gated acceptance
+    # flows. These assets were scanned immediately on creation, so we
+    # also pull in RUNNING assets that may have spawned chained PENDING
+    # assets we want to capture.
+    orphans = (
+        db.query(Asset)
+        .filter(
+            Asset.discovery_run_id.is_(None),
+            Asset.status.in_([AssetStatus.PENDING, AssetStatus.RUNNING]),
+        )
+        .all()
+    )
+    integrated = 0
+    for a in orphans:
+        a.discovery_run_id = run.id
+        integrated += 1
+    if integrated:
+        db.commit()
+
+    schedule_round.delay(run_id)
+    return {
+        "run_id": run_id,
+        "status": "continued",
+        "round": run.round_number + 1,
+        "integrated_assets": integrated,
+    }
 
 
 @router.post("/{job_id}/cancel")
