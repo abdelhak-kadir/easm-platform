@@ -50,11 +50,12 @@ def _make_run(
 
 
 def _mock_query_chain(return_value=None):
-    """Return a MagicMock whose filter/join/distinct chains all return itself."""
+    """Return a MagicMock whose filter/join/distinct/with_for_update chains all return itself."""
     m = MagicMock()
     m.filter.return_value = m
     m.join.return_value = m
     m.distinct.return_value = m
+    m.with_for_update.return_value = m
     if return_value is not None:
         m.all.return_value = return_value
     return m
@@ -110,11 +111,18 @@ class TestCreateDiscoveryRun:
 
 
 class TestScheduleRound:
+    def _make_run_query(self, run=None):
+        """Helper: mock the SELECT FOR UPDATE query that schedule_round
+        now uses to read+lock the DiscoveryRun row."""
+        q = _mock_query_chain()
+        q.first.return_value = run
+        return q
+
     def test_skips_when_run_not_found(self):
         from app.orchestrator import schedule_round
 
         db = MagicMock()
-        db.get.return_value = None
+        db.query.return_value = self._make_run_query(None)
 
         with patch("app.orchestrator.SessionLocal", return_value=db):
             result = schedule_round(42)
@@ -126,7 +134,7 @@ class TestScheduleRound:
 
         run = _make_run(status="completed")
         db = MagicMock()
-        db.get.return_value = run
+        db.query.return_value = self._make_run_query(run)
 
         with patch("app.orchestrator.SessionLocal", return_value=db):
             result = schedule_round(1)
@@ -138,14 +146,15 @@ class TestScheduleRound:
 
         run = _make_run(status="running")
         db = MagicMock()
-        db.get.return_value = run
-        # schedule_round does two queries when PENDING is empty:
-        # 1. PENDING assets → .all() returns []
-        # 2. RUNNING assets count → .count() returns 0
+        # schedule_round queries:
+        # 1. SELECT FOR UPDATE → run
+        # 2. PENDING assets → []
+        # 3. RUNNING assets count → 0
+        run_q = self._make_run_query(run)
         pending_q = _mock_query_chain([])
         running_q = _mock_query_chain()
         running_q.count.return_value = 0
-        db.query.side_effect = [pending_q, running_q]
+        db.query.side_effect = [run_q, pending_q, running_q]
 
         with patch("app.orchestrator.SessionLocal", return_value=db):
             result = schedule_round(1)
@@ -163,10 +172,18 @@ class TestScheduleRound:
         )
 
         db = MagicMock()
-        db.get.return_value = run
-        q = _mock_query_chain([asset])
-        q.first.return_value = None
-        db.query.return_value = q
+        # First db.query() → SELECT FOR UPDATE → run
+        # All subsequent db.query() calls → fallback mock
+        run_q = self._make_run_query(run)
+        fallback_q = _mock_query_chain([asset])
+        fallback_q.first.return_value = None  # no existing jobs (dedup passes)
+        _calls = [0]
+
+        def _query_side_effect(*_a):
+            _calls[0] += 1
+            return run_q if _calls[0] == 1 else fallback_q
+
+        db.query.side_effect = _query_side_effect
 
         mock_spec = MagicMock()
         mock_spec.tool = ToolName.WHOIS
@@ -195,10 +212,18 @@ class TestScheduleRound:
         )
 
         db = MagicMock()
-        db.get.return_value = run
-        q = _mock_query_chain([asset])
-        q.first.return_value = MagicMock()  # non-None → duplicate
-        db.query.return_value = q
+        # First db.query() → SELECT FOR UPDATE → run
+        # All subsequent → fallback where .first() returns a mock (duplicate)
+        run_q = self._make_run_query(run)
+        fallback_q = _mock_query_chain([asset])
+        fallback_q.first.return_value = MagicMock()  # non-None → duplicate
+        _calls = [0]
+
+        def _query_side_effect(*_a):
+            _calls[0] += 1
+            return run_q if _calls[0] == 1 else fallback_q
+
+        db.query.side_effect = _query_side_effect
 
         mock_spec = MagicMock()
         mock_spec.tool = ToolName.WHOIS
@@ -284,12 +309,19 @@ class TestCollectRound:
         spawned.discovery_run_id = None
 
         db = MagicMock()
-        # db.get called for run + each asset in current_round_asset_ids
+        # db.get: run, then asset (for each round asset)
         db.get.side_effect = [run, asset]
 
-        q = _mock_query_chain()
-        q.count.return_value = 0  # no active
-        db.query.return_value = q
+        # Queries (in order):
+        # 1. Round assets query → [asset] (RUNNING, not all DONE)
+        round_assets_q = _mock_query_chain([asset])
+        # 2. Active count query → 0
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 0
+        # 3. SELECT FOR UPDATE → run (same identity, still RUNNING)
+        lock_q = _mock_query_chain()
+        lock_q.first.return_value = run
+        db.query.side_effect = [round_assets_q, active_q, lock_q]
 
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),
@@ -307,12 +339,18 @@ class TestCollectRound:
         from app.orchestrator import collect_round
 
         run = _make_run(current_round_asset_ids=[1], round_number=5, max_rounds=5)
+        round_asset = _make_asset(1, status=AssetStatus.RUNNING)
 
         db = MagicMock()
-        db.get.side_effect = [run, _make_asset(1, status=AssetStatus.RUNNING)]
-        q = _mock_query_chain()
-        q.count.return_value = 0
-        db.query.return_value = q
+        db.get.side_effect = [run, round_asset]
+
+        # Queries: round assets, active count, SELECT FOR UPDATE
+        round_assets_q = _mock_query_chain([round_asset])
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 0
+        lock_q = _mock_query_chain()
+        lock_q.first.return_value = run
+        db.query.side_effect = [round_assets_q, active_q, lock_q]
 
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),
@@ -331,12 +369,18 @@ class TestCollectRound:
 
         run = _make_run(current_round_asset_ids=[1], round_number=5, max_rounds=5)
         spawned = _make_asset(2)
+        round_asset = _make_asset(1, status=AssetStatus.RUNNING)
 
         db = MagicMock()
-        db.get.side_effect = [run, _make_asset(1, status=AssetStatus.RUNNING)]
-        q = _mock_query_chain()
-        q.count.return_value = 0
-        db.query.return_value = q
+        db.get.side_effect = [run, round_asset]
+
+        # Queries: round assets, active count, SELECT FOR UPDATE
+        round_assets_q = _mock_query_chain([round_asset])
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 0
+        lock_q = _mock_query_chain()
+        lock_q.first.return_value = run
+        db.query.side_effect = [round_assets_q, active_q, lock_q]
 
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),

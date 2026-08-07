@@ -1,16 +1,59 @@
 import logging
+import os
 from datetime import UTC, datetime
 
+import redis
 from celery.exceptions import MaxRetriesExceededError, Retry
 from sqlalchemy.exc import IntegrityError
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models import Asset, Finding, ScanJob, ScanResult, ScanStatus
-from app.tools.base import ToolNoDataError, ToolRateLimitError
+from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
 from app.tools.registry import ToolSpec, get_tool_spec
 
 _logger = logging.getLogger(__name__)
+
+# ── collect_round poke debounce ──────────────────────────────────────
+
+# Without dedup, N job completions per round produce N pokes to
+# collect_round, each retrying up to 12 times — up to 12N retry tasks
+# per round.  A Redis-backed distributed lock (SET NX EX) ensures only
+# one poke per run_id across all Celery prefork workers within a 5 s
+# window.
+
+_REDIS_URL = os.environ.get("REDIS_URL")
+_redis: "redis.Redis | None" = None
+
+
+def _get_redis() -> "redis.Redis":
+    """Lazy-init a Redis client shared across worker invocations."""
+    global _redis
+    if _redis is None:
+        _redis = redis.Redis.from_url(_REDIS_URL, decode_responses=True)
+    return _redis
+
+
+def _maybe_poke_collect_round(run_id: int) -> None:
+    """Poke ``collect_round`` for *run_id* using a distributed debounce
+    lock (Redis ``SET NX EX 5``).
+
+    Falls through to the poke if Redis is unavailable — duplicate
+    pokes are harmless (idempotency guards in ``collect_round``
+    serialize them), but a missed poke would stall the wave forever.
+    """
+    from app.orchestrator import collect_round
+
+    key = f"collect_round_poke:{run_id}"
+    try:
+        acquired = _get_redis().set(key, "1", nx=True, ex=5)
+        if not acquired:
+            return
+    except Exception:
+        # Redis unavailable — fall through and poke anyway.
+        pass
+
+    collect_round.apply_async((run_id,), countdown=3)
 
 
 def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
@@ -44,7 +87,15 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
         .first()
     )
     if spawned_asset is None:
-        spawned_asset = Asset(value=spawn_value, asset_type=spec.spawn_asset_type)
+        # Inherit the parent asset's discovery_run_id at creation time
+        # so the spawn is immediately associated with the correct run.
+        # This eliminates the race window where collect_round might miss
+        # a late-created spawn whose parent's run already advanced.
+        spawned_asset = Asset(
+            value=spawn_value,
+            asset_type=spec.spawn_asset_type,
+            discovery_run_id=asset.discovery_run_id,
+        )
         db.add(spawned_asset)
         try:
             db.commit()
@@ -130,6 +181,7 @@ def run_tool_scan(self, job_id: int):
         # Skip jobs cancelled by the user while still queued
         if job.status == ScanStatus.FAILED and job.error_message == "Cancelled by user":
             _logger.info("Job %d was cancelled — skipping", job_id)
+            should_chain = False  # cancelled jobs must not spawn downstream
             return {"job_id": job_id, "status": "cancelled"}
 
         asset = db.get(Asset, job.asset_id)
@@ -163,6 +215,16 @@ def run_tool_scan(self, job_id: int):
             db.add(ScanResult(scan_job_id=job.id, version=next_version, raw_data={}))
             db.commit()
             return {"job_id": job.id, "status": "completed_no_data"}
+        except ToolScanError as e:
+            # Legitimate tool failure (e.g. WHOIS server returned no data,
+            # DNS lookup failed).  Mark the job FAILED and return normally
+            # so Celery doesn't log "raised unexpected" at ERROR level —
+            # this is an expected outcome, not a bug.
+            job.status = ScanStatus.FAILED
+            job.error_message = str(e)[:1000]
+            job.completed_at = datetime.now(UTC)
+            db.commit()
+            return {"job_id": job.id, "status": "failed", "error": str(e)}
 
         result = ScanResult(scan_job_id=job.id, version=next_version, raw_data=raw_data)
         db.add(result)
@@ -174,6 +236,7 @@ def run_tool_scan(self, job_id: int):
         db.refresh(job)
         if job.status == ScanStatus.FAILED and job.error_message == "Cancelled by user":
             _logger.info("Job %d was cancelled during scan — discarding result", job_id)
+            should_chain = False  # cancelled jobs must not spawn downstream
             # Clean up the orphaned ScanResult we just persisted
             db.delete(result)
             db.commit()
@@ -233,11 +296,10 @@ def run_tool_scan(self, job_id: int):
 
         # If this asset belongs to a DiscoveryRun, poke collect_round so the
         # wave orchestrator can check whether the round is complete.
+        # Pokes are debounced to prevent N-job completion storms (audit N13).
         if asset is not None and asset.discovery_run_id is not None:
             try:
-                from app.orchestrator import collect_round
-
-                collect_round.apply_async((asset.discovery_run_id,), countdown=3)
+                _maybe_poke_collect_round(asset.discovery_run_id)
             except Exception:
                 _logger.debug(
                     "Failed to enqueue collect_round for run %d",
@@ -245,4 +307,79 @@ def run_tool_scan(self, job_id: int):
                     exc_info=True,
                 )
 
+        db.close()
+
+
+# ── periodic maintenance ────────────────────────────────────────────
+
+# Jobs stuck RUNNING longer than this are considered lost (worker crash,
+# network partition, etc.) and will be reaped.
+_STUCK_JOB_TIMEOUT_SECONDS = 60 * 30  # 30 minutes
+
+
+@celery_app.task
+def reap_stuck_jobs() -> dict:
+    """Periodic task: mark RUNNING jobs as FAILED if their ``started_at``
+    timestamp is older than ``_STUCK_JOB_TIMEOUT_SECONDS``.
+
+    This is the recovery path for worker crashes — without ``acks_late``,
+    a dead worker's task is never redelivered, so the database row stays
+    RUNNING forever and the wave orchestrator hangs.  The reaper closes
+    that loop.
+    """
+    from datetime import timedelta
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(UTC) - timedelta(seconds=_STUCK_JOB_TIMEOUT_SECONDS)
+        stuck = (
+            db.query(ScanJob)
+            .filter(
+                ScanJob.status == ScanStatus.RUNNING,
+                ScanJob.started_at.isnot(None),
+                ScanJob.started_at < cutoff,
+            )
+            .all()
+        )
+
+        reaped = 0
+        runs_to_poke: set[int] = set()
+        for job in stuck:
+            job.status = ScanStatus.FAILED
+            job.error_message = "Worker lost — timed out after 30 min"
+            job.completed_at = datetime.now(UTC)
+            reaped += 1
+            _logger.warning(
+                "Reaping stuck job %d (asset=%d, tool=%s, started=%s)",
+                job.id,
+                job.asset_id,
+                job.tool,
+                job.started_at,
+            )
+            # Collect affected run IDs so we can poke collect_round
+            asset = db.get(Asset, job.asset_id)
+            if asset is not None and asset.discovery_run_id is not None:
+                runs_to_poke.add(asset.discovery_run_id)
+
+        if reaped > 0:
+            db.commit()
+            _logger.info("Reaped %d stuck job(s) across %d run(s)", reaped, len(runs_to_poke))
+
+            # Poke collect_round for each affected run so the wave can
+            # continue after stuck jobs are cleared.
+            from app.orchestrator import collect_round
+
+            for run_id in runs_to_poke:
+                try:
+                    collect_round.apply_async((run_id,), countdown=3)
+                except Exception:
+                    _logger.warning(
+                        "reap_stuck_jobs — failed to poke collect_round for run %d", run_id
+                    )
+
+        return {"reaped": reaped, "cutoff": cutoff.isoformat()}
+    except Exception:
+        _logger.exception("reap_stuck_jobs failed")
+        raise
+    finally:
         db.close()

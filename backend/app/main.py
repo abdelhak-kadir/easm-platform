@@ -22,6 +22,19 @@ app.include_router(scans.router)
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
+    # Partial unique index: only one active job per (asset, tool) pair.
+    # SQLAlchemy's Enum type uses member *names* (uppercase) for the
+    # native PG enum, so raw SQL literals must match that casing.
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_job_active "
+                "ON scan_jobs (asset_id, tool) "
+                "WHERE status = 'PENDING' OR status = 'RUNNING'"
+            )
+        )
+        conn.commit()
+
 
 @app.get("/health")
 def health():

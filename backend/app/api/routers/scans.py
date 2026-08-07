@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DBSession
 from app.api.schemas import AcceptDiscoveredAssets, AcceptSuggestedAssets
@@ -58,9 +59,28 @@ def trigger_discovery(asset_id: int, db: DBSession):
 
     queued = []
     for spec in specs:
+        # Skip if there's already an active (PENDING/RUNNING) job for this
+        # asset+tool pair — the partial unique index enforces this at the DB
+        # level, but the pre-check avoids a noisy IntegrityError.
+        existing = (
+            db.query(ScanJob)
+            .filter(
+                ScanJob.asset_id == asset.id,
+                ScanJob.tool == spec.tool,
+                ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+            )
+            .first()
+        )
+        if existing is not None:
+            continue
+
         job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
         db.add(job)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            continue
         db.refresh(job)
         task = run_tool_scan.delay(job.id)
         queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
@@ -93,9 +113,25 @@ def accept_suggested_assets(payload: AcceptSuggestedAssets, db: DBSession):
             asset.status = AssetStatus.RUNNING
             db.commit()
             for spec in tools_for_asset_type(AssetType.IP):
+                existing = (
+                    db.query(ScanJob)
+                    .filter(
+                        ScanJob.asset_id == asset.id,
+                        ScanJob.tool == spec.tool,
+                        ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+                    )
+                    .first()
+                )
+                if existing is not None:
+                    continue
+
                 job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
                 db.add(job)
-                db.commit()
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    continue
                 db.refresh(job)
                 task = run_tool_scan.delay(job.id)
                 queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
@@ -144,9 +180,25 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
             asset.status = AssetStatus.RUNNING
             db.commit()
             for spec in tools_for_asset_type(payload.asset_type):
+                existing = (
+                    db.query(ScanJob)
+                    .filter(
+                        ScanJob.asset_id == asset.id,
+                        ScanJob.tool == spec.tool,
+                        ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+                    )
+                    .first()
+                )
+                if existing is not None:
+                    continue
+
                 job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
                 db.add(job)
-                db.commit()
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    continue
                 db.refresh(job)
                 task = run_tool_scan.delay(job.id)
                 queued.append({"task_id": task.id, "job_id": job.id, "tool": spec.tool})
@@ -177,7 +229,9 @@ def start_discovery(asset_id: int, db: DBSession, max_rounds: int = 5):
     try:
         run = create_discovery_run(db, asset_id, max_rounds)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        # Distinguish "asset not found" (404) from "duplicate active run" (409)
+        status_code = 409 if "already has an active" in str(e) else 404
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
 
     schedule_round.delay(run.id)
     return {
@@ -210,7 +264,7 @@ def continue_discovery(run_id: int, db: DBSession):
     with any ``discovery_run_id`` — into this run.  Only assets created
     after the run started are considered (temporal scoping prevents
     accidental cross-run contamination)."""
-    from app.orchestrator import collect_round, schedule_round
+    from app.orchestrator import schedule_round
 
     run = db.get(DiscoveryRun, run_id)
     if run is None:
@@ -261,26 +315,14 @@ def continue_discovery(run_id: int, db: DBSession):
     if integrated:
         db.commit()
 
-    # Determine the next action based on what we integrated:
-    # - PENDING assets need schedule_round to queue their tools.
-    # - RUNNING assets are already scanning — their completion pokes
-    #   (which now work, since discovery_run_id is set) will trigger
-    #   collect_round.
-    pending = (
-        db.query(Asset)
-        .filter(
-            Asset.discovery_run_id == run_id,
-            Asset.status == AssetStatus.PENDING,
-        )
-        .count()
-    )
-
-    if pending > 0:
-        schedule_round.delay(run_id)
-    else:
-        # No PENDING work — poke collect_round in case all in-flight
-        # jobs have already completed (late acceptance).
-        collect_round.apply_async((run_id,), countdown=3)
+    # Delegate to schedule_round — it will either queue tools for PENDING
+    # assets, return "waiting" if RUNNING assets are still in flight
+    # (their job-completion pokes will advance the round), or complete the
+    # run if no work remains.  We do NOT poke collect_round directly
+    # because a concurrent collector for the previous round might race
+    # with the integrated assets' in-flight jobs and prematurely terminate
+    # the run.
+    schedule_round.delay(run_id)
 
     return {
         "run_id": run_id,
@@ -333,9 +375,33 @@ def trigger_tool_scan(tool: ToolName, asset_id: int, db: DBSession):
             detail=f"Tool '{tool}' does not apply to asset type '{asset.asset_type}'",
         )
 
+    # Check for existing active scan — at most one PENDING/RUNNING per asset+tool
+    existing_active = (
+        db.query(ScanJob)
+        .filter(
+            ScanJob.asset_id == asset.id,
+            ScanJob.tool == tool,
+            ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+        )
+        .first()
+    )
+    if existing_active is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tool '{tool}' is already scanning asset {asset_id} "
+            f"(job_id={existing_active.id}, status={existing_active.status})",
+        )
+
     job = ScanJob(asset_id=asset.id, tool=tool, status=ScanStatus.PENDING)
     db.add(job)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tool '{tool}' is already scanning asset {asset_id}",
+        ) from None
     db.refresh(job)
 
     asset.status = AssetStatus.RUNNING
