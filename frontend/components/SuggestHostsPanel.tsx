@@ -127,7 +127,14 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted, di
     if (!discoveryRunId) return;
     setContinuing(true);
     try {
-      await fetch(`${apiBase}/scans/discovery/${discoveryRunId}/continue`, { method: "POST" });
+      const res = await fetch(`${apiBase}/scans/discovery/${discoveryRunId}/continue`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const detail = await res.json().then((d) => d.detail).catch(() => "Unknown error");
+        console.error("Continue discovery failed:", detail);
+        return;
+      }
       onAssetsAccepted?.();
     } finally {
       setContinuing(false);

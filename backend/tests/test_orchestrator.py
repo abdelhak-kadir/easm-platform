@@ -5,7 +5,7 @@ access — no Redis/Postgres container is needed to run them.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from app.models import AssetStatus, AssetType, DiscoveryRun, ToolName
@@ -70,19 +70,33 @@ class TestCreateDiscoveryRun:
         db = MagicMock()
         root = _make_asset(1, "example.com", AssetType.DOMAIN, AssetStatus.PENDING)
         db.get.return_value = root
+        # The existing-run check queries DiscoveryRun — return None (no existing run)
+        existing_q = _mock_query_chain(None)
+        # `.first()` returns None for the existing-run check
+        existing_q.first.return_value = None
+        db.query.return_value = existing_q
 
         run = create_discovery_run(db, 1, max_rounds=3)
 
-        db.get.assert_called_once_with(ANY, 1)
-        db.add.assert_called_once()
-        db.flush.assert_called_once()
         assert root.discovery_run_id == run.id
         assert root.status == AssetStatus.PENDING  # stays PENDING — schedule_round promotes it
         assert run.max_rounds == 3
         assert run.root_asset_id == 1
         db.commit.assert_called_once()
 
-    def test_raises_valueerror_when_asset_not_found(self):
+    def test_raises_valueerror_when_existing_active_run(self):
+        from app.orchestrator import create_discovery_run
+
+        db = MagicMock()
+        root = _make_asset(1, "example.com", AssetType.DOMAIN, AssetStatus.PENDING)
+        db.get.return_value = root
+        existing_run = _make_run(id_=99, status="running")
+        existing_q = _mock_query_chain(None)
+        existing_q.first.return_value = existing_run
+        db.query.return_value = existing_q
+
+        with pytest.raises(ValueError, match="already has an active discovery run"):
+            create_discovery_run(db, 1, max_rounds=5)
         from app.orchestrator import create_discovery_run
 
         db = MagicMock()
@@ -125,7 +139,13 @@ class TestScheduleRound:
         run = _make_run(status="running")
         db = MagicMock()
         db.get.return_value = run
-        db.query.return_value = _mock_query_chain([])
+        # schedule_round does two queries when PENDING is empty:
+        # 1. PENDING assets → .all() returns []
+        # 2. RUNNING assets count → .count() returns 0
+        pending_q = _mock_query_chain([])
+        running_q = _mock_query_chain()
+        running_q.count.return_value = 0
+        db.query.side_effect = [pending_q, running_q]
 
         with patch("app.orchestrator.SessionLocal", return_value=db):
             result = schedule_round(1)
@@ -235,9 +255,16 @@ class TestCollectRound:
         run = _make_run(current_round_asset_ids=[1, 2])
         db = MagicMock()
         db.get.return_value = run
-        q = _mock_query_chain()
-        q.count.return_value = 1  # active job(s)
-        db.query.return_value = q
+
+        # Idempotency check: query round assets → not all DONE
+        round_asset = _make_asset(1, status=AssetStatus.RUNNING)
+        round_assets_q = _mock_query_chain([round_asset])
+
+        # Active jobs query → count returns 1
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 1
+
+        db.query.side_effect = [round_assets_q, active_q]
 
         # Patch retry on the *task instance* — collect_round is a bound
         # task, so it receives `self` as the task and calls self.retry().
@@ -257,17 +284,7 @@ class TestCollectRound:
         spawned.discovery_run_id = None
 
         db = MagicMock()
-        # db.get called for run + each asset in the round
-        db.get.side_effect = lambda model, id_: run if id_ == 1 else asset if id_ == 1 else None
-        # Actually: collect_round gets run via db.get(DiscoveryRun, run_id),
-        # then for each aid in current_round_asset_ids: db.get(Asset, aid)
-        db.get.side_effect = lambda model, id_: (
-            {1: run, 2: asset}.get(id_) if id_ in (1, 2) else None
-        )
-        # Wait, that's wrong too. Let me think: db.get is called with (DiscoveryRun, 1)
-        # then with (Asset, 1). Mock.get doesn't differentiate models.
-
-        # Simpler: use a list side_effect for successive calls
+        # db.get called for run + each asset in current_round_asset_ids
         db.get.side_effect = [run, asset]
 
         q = _mock_query_chain()

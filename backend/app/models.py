@@ -58,6 +58,15 @@ class Severity(enum.StrEnum):
     CRITICAL = "critical"
 
 
+class RunStatus:
+    """String constants for DiscoveryRun.status — not a DB enum (column is
+    String(20)), but centralized here so typos don't silently break guards."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    MAX_ROUNDS_REACHED = "max_rounds_reached"
+
+
 class Asset(Base):
     __tablename__ = "assets"
 
@@ -84,6 +93,7 @@ class Asset(Base):
 
 class ScanJob(Base):
     __tablename__ = "scan_jobs"
+    __table_args__ = (UniqueConstraint("asset_id", "tool", name="uq_scan_job_asset_tool"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), nullable=False)

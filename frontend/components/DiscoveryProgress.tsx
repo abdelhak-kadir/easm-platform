@@ -11,7 +11,6 @@ type Props = {
 
 export default function DiscoveryProgress({ apiBase, runId, onRefreshAssets }: Props) {
   const [status, setStatus] = useState<DiscoveryRunStatus | null>(null);
-  const [advancing, setAdvancing] = useState(false);
 
   const poll = useCallback(() => {
     fetch(`${apiBase}/scans/discovery/${runId}`)
@@ -25,16 +24,6 @@ export default function DiscoveryProgress({ apiBase, runId, onRefreshAssets }: P
     const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
   }, [poll]);
-
-  async function handleContinue() {
-    setAdvancing(true);
-    try {
-      await fetch(`${apiBase}/scans/discovery/${runId}/continue`, { method: "POST" });
-      onRefreshAssets();
-    } finally {
-      setAdvancing(false);
-    }
-  }
 
   if (!status) return null;
 
@@ -87,18 +76,7 @@ export default function DiscoveryProgress({ apiBase, runId, onRefreshAssets }: P
           : "En cours"}
       </span>
 
-      {/* Continue button — shown when all jobs done but round not finished */}
-      {status.status === "running" && status.active_jobs === 0 && status.assets.pending > 0 && (
-        <button
-          onClick={handleContinue}
-          disabled={advancing}
-          className="btn-primary text-xs shrink-0"
-        >
-          {advancing ? "…" : `Continuer → Round ${status.round_number + 1}`}
-        </button>
-      )}
-
-      {/* Refresh assets when done */}
+      {/* Refresh button shown when the run is done */}
       {done && (
         <button onClick={onRefreshAssets} className="btn-primary text-xs shrink-0">
           Actualiser

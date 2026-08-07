@@ -10,6 +10,7 @@ from app.models import (
     AssetStatus,
     AssetType,
     DiscoveryRun,
+    RunStatus,
     ScanJob,
     ScanResult,
     ScanStatus,
@@ -165,6 +166,12 @@ def start_discovery(asset_id: int, db: DBSession, max_rounds: int = 5):
     """Create a DiscoveryRun and kick off the first wave of scans against
     *asset_id*. Every applicable tool is queued; spawned assets feed the
     next round until no new assets are found or *max_rounds* is reached."""
+    if max_rounds < 1 or max_rounds > 20:
+        raise HTTPException(
+            status_code=400,
+            detail="max_rounds must be between 1 and 20",
+        )
+
     from app.orchestrator import create_discovery_run, schedule_round
 
     try:
@@ -198,41 +205,83 @@ def continue_discovery(run_id: int, db: DBSession):
     """Advance a discovery run to the next round after the user has
     reviewed and accepted human-gated discovered assets.
 
-    Integrates orphan PENDING assets — those created by human-gated
-    acceptance flows (suggest-discovered, suggest-assets) that are not
-    yet tagged with any ``discovery_run_id`` — into this run before
-    scheduling the next round."""
-    from app.orchestrator import schedule_round
+    Integrates orphan assets — those created by human-gated acceptance
+    flows (suggest-discovered, suggest-assets) that are not yet tagged
+    with any ``discovery_run_id`` — into this run.  Only assets created
+    after the run started are considered (temporal scoping prevents
+    accidental cross-run contamination)."""
+    from app.orchestrator import collect_round, schedule_round
 
     run = db.get(DiscoveryRun, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="DiscoveryRun not found")
-    if run.status != "running":
+    if run.status != RunStatus.RUNNING:
         raise HTTPException(
             status_code=400,
             detail=f"Cannot continue a run with status '{run.status}'",
         )
 
-    # Integrate orphan PENDING assets created by human-gated acceptance
-    # flows. These assets were scanned immediately on creation, so we
-    # also pull in RUNNING assets that may have spawned chained PENDING
-    # assets we want to capture.
+    # Integrate orphan assets created by human-gated acceptance flows since
+    # this run started.  Temporal scoping prevents stealing orphans from
+    # other runs (though concurrent runs on the same root are now blocked
+    # by create_discovery_run).
     orphans = (
         db.query(Asset)
         .filter(
             Asset.discovery_run_id.is_(None),
             Asset.status.in_([AssetStatus.PENDING, AssetStatus.RUNNING]),
+            Asset.created_at >= run.created_at,
         )
         .all()
     )
     integrated = 0
     for a in orphans:
         a.discovery_run_id = run.id
+        # Fix status: assets accepted outside the wave are set to RUNNING
+        # by the accept endpoints, but the wave needs them in a terminal
+        # state (PENDING for schedule_round, or DONE if already scanned).
+        # Check whether this asset already has completed jobs — if all its
+        # jobs are done, mark it DONE; if some are active, leave RUNNING;
+        # otherwise set PENDING so schedule_round picks it up.
+        active_jobs = (
+            db.query(ScanJob)
+            .filter(
+                ScanJob.asset_id == a.id,
+                ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+            )
+            .count()
+        )
+        total_jobs = db.query(ScanJob).filter(ScanJob.asset_id == a.id).count()
+        if total_jobs > 0 and active_jobs == 0:
+            a.status = AssetStatus.DONE
+        elif active_jobs == 0:
+            a.status = AssetStatus.PENDING
+        # else: active_jobs > 0 → leave as RUNNING, completion pokes will advance
         integrated += 1
     if integrated:
         db.commit()
 
-    schedule_round.delay(run_id)
+    # Determine the next action based on what we integrated:
+    # - PENDING assets need schedule_round to queue their tools.
+    # - RUNNING assets are already scanning — their completion pokes
+    #   (which now work, since discovery_run_id is set) will trigger
+    #   collect_round.
+    pending = (
+        db.query(Asset)
+        .filter(
+            Asset.discovery_run_id == run_id,
+            Asset.status == AssetStatus.PENDING,
+        )
+        .count()
+    )
+
+    if pending > 0:
+        schedule_round.delay(run_id)
+    else:
+        # No PENDING work — poke collect_round in case all in-flight
+        # jobs have already completed (late acceptance).
+        collect_round.apply_async((run_id,), countdown=3)
+
     return {
         "run_id": run_id,
         "status": "continued",

@@ -1,7 +1,8 @@
 import logging
 from datetime import UTC, datetime
 
-from celery.exceptions import Retry
+from celery.exceptions import MaxRetriesExceededError, Retry
+from sqlalchemy.exc import IntegrityError
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
@@ -22,6 +23,10 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     failure) -- DNS resolution doesn't depend on WHOIS actually having a
     record for the domain, so a chain-eligible tool should still try even
     when its own lookup came back empty or errored out.
+
+    Safe against concurrent workers: uses the DB unique constraint on
+    (asset_id, tool) as a guardrail with an explicit pre-check for the
+    common case.
     """
     if not spec.spawns or not spec.resolve_spawn_value:
         return
@@ -30,6 +35,9 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     if not spawn_value:
         return
 
+    # Find-or-create the spawned asset.  The unique constraint on
+    # (value, asset_type) prevents duplicates; if two workers race, one
+    # gets IntegrityError and re-queries.
     spawned_asset = (
         db.query(Asset)
         .filter(Asset.value == spawn_value, Asset.asset_type == spec.spawn_asset_type)
@@ -38,21 +46,60 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
     if spawned_asset is None:
         spawned_asset = Asset(value=spawn_value, asset_type=spec.spawn_asset_type)
         db.add(spawned_asset)
-        db.commit()
-        db.refresh(spawned_asset)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            spawned_asset = (
+                db.query(Asset)
+                .filter(Asset.value == spawn_value, Asset.asset_type == spec.spawn_asset_type)
+                .first()
+            )
+            if spawned_asset is None:
+                raise  # should never happen — constraint guarantees existence
+        else:
+            db.refresh(spawned_asset)
 
-    already_scanned = (
+    # Check for existing spawn job — any status (PENDING, RUNNING,
+    # COMPLETED, FAILED) means this asset+tool pair has already been
+    # handled or is currently being handled.  FAILED jobs from earlier
+    # rounds are still skipped; the wave orchestrator never re-spawns
+    # the same pair.
+    existing_job = (
         db.query(ScanJob)
-        .filter(ScanJob.asset_id == spawned_asset.id, ScanJob.tool == spec.spawns)
+        .filter(
+            ScanJob.asset_id == spawned_asset.id,
+            ScanJob.tool == spec.spawns,
+        )
         .first()
     )
-    if already_scanned:
+    if existing_job is not None:
+        # Link the existing job to this parent for traceability, but
+        # don't queue a duplicate.
+        job.spawned_asset_id = spawned_asset.id
+        job.spawned_job_id = existing_job.id
+        db.commit()
         return
 
+    # No existing job — create one and link it
     spawned_job = ScanJob(asset_id=spawned_asset.id, tool=spec.spawns, status=ScanStatus.PENDING)
     db.add(spawned_job)
-    db.commit()
-    db.refresh(spawned_job)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Another worker raced us to create this job (unique constraint on
+        # asset_id+tool). Re-query and link to the winner.
+        db.rollback()
+        spawned_job = (
+            db.query(ScanJob)
+            .filter(
+                ScanJob.asset_id == spawned_asset.id,
+                ScanJob.tool == spec.spawns,
+            )
+            .first()
+        )
+        if spawned_job is None:
+            raise  # should never happen
 
     job.spawned_asset_id = spawned_asset.id
     job.spawned_job_id = spawned_job.id
@@ -113,10 +160,6 @@ def run_tool_scan(self, job_id: int):
             job.status = ScanStatus.COMPLETED
             job.error_message = str(e)[:1000]
             job.completed_at = datetime.now(UTC)
-            # Save a minimal ScanResult so chaining resolvers can find the
-            # cached outcome and skip redundant live lookups (e.g. Reverse DNS
-            # returning "no PTR" should prevent Shodan/Censys chaining from
-            # re-running the same DNS query).
             db.add(ScanResult(scan_job_id=job.id, version=next_version, raw_data={}))
             db.commit()
             return {"job_id": job.id, "status": "completed_no_data"}
@@ -125,6 +168,16 @@ def run_tool_scan(self, job_id: int):
         db.add(result)
         db.commit()
         db.refresh(result)
+
+        # Re-check whether the job was cancelled while the tool was running
+        # (the cancel endpoint flips the DB row while the worker is busy).
+        db.refresh(job)
+        if job.status == ScanStatus.FAILED and job.error_message == "Cancelled by user":
+            _logger.info("Job %d was cancelled during scan — discarding result", job_id)
+            # Clean up the orphaned ScanResult we just persisted
+            db.delete(result)
+            db.commit()
+            return {"job_id": job_id, "status": "cancelled"}
 
         for finding_data in spec.parse(raw_data):
             db.add(Finding(scan_result_id=result.id, **finding_data))
@@ -135,9 +188,27 @@ def run_tool_scan(self, job_id: int):
 
         return {"job_id": job.id, "status": "completed", "version": next_version}
 
+    except MaxRetriesExceededError:
+        # Celery exhausted retries — mark the job FAILED so the wave
+        # orchestrator doesn't wait forever.  Must be caught BEFORE the
+        # generic `except Retry` below.
+        should_chain = False
+        _logger.warning("Job %d exceeded max retries — marking FAILED", job_id)
+        try:
+            job = db.get(ScanJob, job_id)
+            if job is not None:
+                job.status = ScanStatus.FAILED
+                job.error_message = "Max retries exceeded"
+                job.completed_at = datetime.now(UTC)
+                db.commit()
+        except Exception:
+            _logger.exception("Failed to mark job %d as FAILED after retry exhaustion", job_id)
+        raise  # let Celery handle the task failure
+
     except Retry:
         should_chain = False
         raise
+
     except Exception as e:
         job = db.get(ScanJob, job_id)
         if job is not None:
@@ -146,6 +217,7 @@ def run_tool_scan(self, job_id: int):
             job.completed_at = datetime.now(UTC)
             db.commit()
         raise
+
     finally:
         if should_chain and job is not None and asset is not None and spec is not None:
             try:
