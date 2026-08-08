@@ -74,6 +74,7 @@ class RunStatus:
     RUNNING = "running"
     COMPLETED = "completed"
     MAX_ROUNDS_REACHED = "max_rounds_reached"
+    CANCELLED = "cancelled"
 
 
 class Asset(Base):
@@ -166,7 +167,7 @@ class DiscoveryRun(Base):
         Index("ix_discovery_runs_root_status", "root_asset_id", "status"),
         # Reject invalid status strings at the DB level.
         CheckConstraint(
-            "status IN ('running', 'completed', 'max_rounds_reached')",
+            "status IN ('running', 'completed', 'max_rounds_reached', 'cancelled')",
             name="ck_discovery_runs_status",
         ),
     )

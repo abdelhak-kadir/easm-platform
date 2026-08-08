@@ -8,7 +8,7 @@ finish, spawned assets are collected and the next round begins — up to
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from celery.exceptions import Retry
 from sqlalchemy.exc import IntegrityError
@@ -21,8 +21,10 @@ from app.tools.registry import tools_for_asset_type
 _logger = logging.getLogger(__name__)
 
 # Maximum number of times collect_round will retry itself while waiting
-# for in-flight scan jobs to settle (5 s delay × 12 attempts = 60 s window).
-_COLLECT_MAX_RETRIES = 12
+# for in-flight scan jobs to settle (10 s delay × 30 attempts = 300 s window).
+# Some tools take 60-90 s (theHarvester with CRT.sh timeout + retry, Nmap,
+# email_security DNS timeouts), so the window must generously exceed that.
+_COLLECT_MAX_RETRIES = 30
 
 
 # ── public API (called from routers) ──────────────────────────────────
@@ -219,7 +221,7 @@ def schedule_round(run_id: int) -> dict:
         db.close()
 
 
-@celery_app.task(bind=True, max_retries=_COLLECT_MAX_RETRIES, default_retry_delay=5)
+@celery_app.task(bind=True, max_retries=_COLLECT_MAX_RETRIES, default_retry_delay=10)
 def collect_round(self, run_id: int) -> dict:
     """Check whether every scan for the current round has settled.
 
@@ -283,8 +285,50 @@ def collect_round(self, run_id: int) -> dict:
         )
 
         if active > 0:
-            _logger.debug("collect_round run_id=%d — %d job(s) still active", run_id, active)
-            raise self.retry()
+            # On the last retry attempt, check for genuinely stuck jobs (RUNNING
+            # for > 10 min).  If all active jobs are stuck, mark them FAILED
+            # and proceed with the settle so the run doesn't hang forever.
+            # Normal jobs that are just slow get a fresh collector poke instead.
+            if self.request.retries >= self.max_retries - 1:
+                stuck_cutoff = datetime.now(UTC) - timedelta(minutes=10)
+                stuck_jobs = (
+                    db.query(ScanJob)
+                    .filter(
+                        ScanJob.asset_id.in_(run.current_round_asset_ids),
+                        ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+                        ScanJob.started_at < stuck_cutoff,
+                    )
+                    .all()
+                )
+                normal_active = active - len(stuck_jobs)
+                if stuck_jobs:
+                    for sj in stuck_jobs:
+                        sj.status = ScanStatus.FAILED
+                        sj.error_message = "Collector exhausted — job stuck > 10 min"
+                        sj.completed_at = datetime.now(UTC)
+                    db.commit()
+                    _logger.warning(
+                        "collect_round run_id=%d — exhausted retries, "
+                        "failed %d stuck job(s), %d still active",
+                        run_id,
+                        len(stuck_jobs),
+                        normal_active,
+                    )
+                if normal_active > 0:
+                    # Slow-but-legitimate jobs — poke a fresh collector to
+                    # take over rather than leaving the run orphaned.
+                    from app.tasks import _maybe_poke_collect_round
+
+                    _maybe_poke_collect_round(run_id)
+                    return {
+                        "status": "handed_off",
+                        "reason": f"exhausted retries, {normal_active} job(s) still active, "
+                        "poked fresh collector",
+                    }
+                # All jobs were stuck — fall through to settle logic below
+            else:
+                _logger.debug("collect_round run_id=%d — %d job(s) still active", run_id, active)
+                raise self.retry()
 
         # ── acquire row lock and re-verify round identity ─────────────
         # Serializes concurrent collectors so exactly one performs the

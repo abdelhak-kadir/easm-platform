@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import TopNav from "../components/TopNav";
 import Sidebar from "../components/Sidebar";
 import ScanHistory from "../components/ScanHistory";
@@ -18,6 +18,7 @@ import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 import ToolExplainer from "../components/ToolExplainer";
 import PlainSummary from "../components/PlainSummary";
 import DiscoveryProgress from "../components/DiscoveryProgress";
+import { ToastContainer, showToast } from "../components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
 const ALL_SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -25,7 +26,7 @@ const ACTIVE_STATUSES = new Set(["pending", "running"]);
 
 export default function Home() {
   const { assets, createAsset, refresh: refreshAssets } = useAssets(API_BASE);
-  const { jobs: fleetJobs, activeJobs: fleetActiveJobs, refresh: refreshFleet } = useFleetScans(API_BASE, assets);
+  const { jobs: fleetJobs, activeJobs: fleetActiveJobs, refresh: refreshFleet } = useFleetScans(API_BASE);
 
   const [asset, setAsset] = useState<Asset | null>(null);
   const [job, setJob] = useState<ScanJob | null>(null);
@@ -38,12 +39,13 @@ export default function Home() {
   const [activeType, setActiveType] = useState<string | null>(null);
 
   const [discovering, setDiscovering] = useState(false);
+  const findingsRef = useRef<HTMLDivElement>(null);
 
   const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
   const busy = scanning || discovering;
   const activeScanCount = fleetActiveJobs.length;
 
-  function selectAsset(a: Asset) {
+  function selectAsset(a: Asset | null) {
     setAsset(a);
     setJob(null);
     setResults(null);
@@ -79,7 +81,16 @@ export default function Home() {
 
   async function triggerScan() {
     if (!asset) return;
-    await fetch(`${API_BASE}/scans/discover/${asset.id}`, { method: "POST" });
+    try {
+      const res = await fetch(`${API_BASE}/scans/discover/${asset.id}`, { method: "POST" });
+      if (!res.ok) {
+        showToast("Échec du lancement de l'analyse", "error");
+        return;
+      }
+      showToast("Analyse lancée", "success");
+    } catch {
+      showToast("Impossible de contacter le serveur", "error");
+    }
     setJob(null);
     setResults(null);
     resetFilters();
@@ -109,7 +120,7 @@ export default function Home() {
       setHistoryRefresh((k) => k + 1);
       refreshFleet();
     } catch (err: any) {
-      window.alert(err.message || "Échec du lancement de la découverte");
+      showToast(err.message || "Échec du lancement de la découverte", "error");
     } finally {
       setDiscovering(false);
     }
@@ -124,8 +135,16 @@ export default function Home() {
   function selectPastJob(j: ScanJob) {
     setJob(j);
     resetFilters();
-    if (j.status === "completed") loadResults(j.id);
-    else setResults(null);
+    if (j.status === "completed") {
+      loadResults(j.id).then(() => {
+        // Auto-scroll to findings after results load
+        setTimeout(() => {
+          findingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 150);
+      });
+    } else {
+      setResults(null);
+    }
   }
 
   useEffect(() => {
@@ -166,6 +185,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "var(--canvas)" }}>
+      <ToastContainer />
       <TopNav
         activeScanCount={activeScanCount}
         selectedAssetValue={asset?.value ?? null}
@@ -180,6 +200,7 @@ export default function Home() {
             assets={assets}
             selectedAssetId={asset?.id}
             activeScanCount={activeScanCount}
+            fleetJobs={fleetJobs}
             onSelect={selectAsset}
             onCreate={createAsset}
           />
@@ -189,10 +210,12 @@ export default function Home() {
         <main className="flex-1 overflow-y-auto px-6 py-6">
           {!asset ? (
             <FleetDashboard
+              apiBase={API_BASE}
               assets={assets}
               jobs={fleetJobs}
               activeCount={activeScanCount}
               onSelectAsset={selectAssetById}
+              onRefresh={refreshFleet}
             />
           ) : (
             /* ── Asset selected ── */
@@ -267,7 +290,7 @@ export default function Home() {
                     background: "var(--critical-dim)",
                   }}
                 >
-                  L'analyse a échoué consultez l'historique ci-dessus ou réessayez.
+                  L'analyse a échoué. Consultez l'historique ci-dessus ou réessayez.
                 </div>
               )}
 
@@ -307,7 +330,7 @@ export default function Home() {
 
               {/* Findings */}
               {results?.findings && (
-                <section className="mt-5">
+                <section ref={findingsRef} className="mt-5">
                   <RiskSummary findings={results.findings} assetValue={asset.value} />
                   <StatsSummary findings={results.findings} />
                   {results.findings.length > 0 && (

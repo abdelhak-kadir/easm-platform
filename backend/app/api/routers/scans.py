@@ -332,6 +332,55 @@ def continue_discovery(run_id: int, db: DBSession):
     }
 
 
+@router.post("/discovery/{run_id}/cancel")
+def cancel_discovery_run(run_id: int, db: DBSession):
+    """Cancel an active discovery run and all its in-flight scan jobs.
+
+    Sets the run status to CANCELLED and marks every PENDING/RUNNING job
+    belonging to the run's assets as FAILED (``error_message = "Cancelled
+    by user"``), matching the per-job cancel contract so the Celery worker
+    skips or discards them cooperatively.
+    """
+    run = db.get(DiscoveryRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="DiscoveryRun not found")
+    if run.status != RunStatus.RUNNING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a run with status '{run.status}'",
+        )
+
+    # Cancel every in-flight job tied to assets in this run
+    cancelled_jobs = 0
+    asset_ids = [
+        row[0] for row in db.query(Asset.id).filter(Asset.discovery_run_id == run_id).all()
+    ]
+    if asset_ids:
+        jobs = (
+            db.query(ScanJob)
+            .filter(
+                ScanJob.asset_id.in_(asset_ids),
+                ScanJob.status.in_([ScanStatus.PENDING, ScanStatus.RUNNING]),
+            )
+            .all()
+        )
+        for job in jobs:
+            job.status = ScanStatus.FAILED
+            job.error_message = "Cancelled by user"
+            job.completed_at = datetime.now(UTC)
+            cancelled_jobs += 1
+
+    run.status = RunStatus.CANCELLED
+    run.completed_at = datetime.now(UTC)
+    db.commit()
+
+    return {
+        "run_id": run_id,
+        "cancelled_jobs": cancelled_jobs,
+        "status": "cancelled",
+    }
+
+
 @router.post("/{job_id}/cancel")
 def cancel_scan_job(job_id: int, db: DBSession):
     """Cancel a PENDING or RUNNING scan job. Sets it to FAILED with a

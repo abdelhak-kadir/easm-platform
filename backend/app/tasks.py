@@ -36,24 +36,27 @@ def _get_redis() -> "redis.Redis":
 
 def _maybe_poke_collect_round(run_id: int) -> None:
     """Poke ``collect_round`` for *run_id* using a distributed debounce
-    lock (Redis ``SET NX EX 5``).
+    lock (Redis ``SET NX EX 15``).
 
-    Falls through to the poke if Redis is unavailable — duplicate
-    pokes are harmless (idempotency guards in ``collect_round``
-    serialize them), but a missed poke would stall the wave forever.
+    The lock TTL (15 s) is longer than the countdown (5 s) so a newly
+    poked collector has time to start and claim the run before another
+    poke fires.  Falls through to the poke if Redis is unavailable —
+    duplicate pokes are harmless (idempotency guards in
+    ``collect_round`` serialize them), but a missed poke would stall
+    the wave forever.
     """
     from app.orchestrator import collect_round
 
     key = f"collect_round_poke:{run_id}"
     try:
-        acquired = _get_redis().set(key, "1", nx=True, ex=5)
+        acquired = _get_redis().set(key, "1", nx=True, ex=15)
         if not acquired:
             return
     except Exception:
         # Redis unavailable — fall through and poke anyway.
         pass
 
-    collect_round.apply_async((run_id,), countdown=3)
+    collect_round.apply_async((run_id,), countdown=5)
 
 
 def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:

@@ -24,6 +24,7 @@ export interface ScanJob {
   status: string;
   error_message?: string | null;
   created_at?: string;
+  started_at?: string;
   completed_at?: string;
   spawned_asset_id?: number | null;
   spawned_asset_value?: string | null;
@@ -108,7 +109,7 @@ export interface DiscoveryRunStatus {
   root_asset: { id: number | null; value: string | null };
   round_number: number;
   max_rounds: number;
-  status: string; // "running" | "completed" | "max_rounds_reached"
+  status: string; // "running" | "completed" | "max_rounds_reached" | "cancelled"
   assets: { total: number; pending: number; running: number; done: number };
   active_jobs: number;
   created_at: string | null;
