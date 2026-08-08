@@ -286,11 +286,13 @@ def collect_round(self, run_id: int) -> dict:
 
         if active > 0:
             # On the last retry attempt, check for genuinely stuck jobs (RUNNING
-            # for > 10 min).  If all active jobs are stuck, mark them FAILED
-            # and proceed with the settle so the run doesn't hang forever.
+            # for > 3 min).  No legitimate tool takes > 2 min; anything still
+            # running at 3 min is either lost (worker crash after ack) or hung.
+            # If all active jobs are stuck, mark them FAILED and proceed with
+            # the settle so the run doesn't hang forever.
             # Normal jobs that are just slow get a fresh collector poke instead.
             if self.request.retries >= self.max_retries - 1:
-                stuck_cutoff = datetime.now(UTC) - timedelta(minutes=10)
+                stuck_cutoff = datetime.now(UTC) - timedelta(minutes=3)
                 stuck_jobs = (
                     db.query(ScanJob)
                     .filter(

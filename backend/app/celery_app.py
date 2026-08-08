@@ -29,11 +29,15 @@ celery_app.conf.update(
     # constraint on version).  Deferred until task idempotency is
     # fully verified.
     beat_schedule={
-        # Every 5 minutes, mark RUNNING jobs as FAILED if they've been
-        # stuck for more than 30 minutes (worker crash / lost).
+        # Every 2 minutes, mark RUNNING jobs as FAILED if they've been
+        # stuck for more than 5 minutes (worker crash / lost task due to
+        # acks_late=False).  Shorter than the old 30-min window because
+        # no legitimate tool takes > 2 min, and the wave orchestrator
+        # needs prompt recovery.  The orchestrator's collector also has
+        # a 3-min stuck cutoff as a first line of defense.
         "reap-stuck-jobs": {
             "task": "app.tasks.reap_stuck_jobs",
-            "schedule": 300.0,  # seconds
+            "schedule": 120.0,  # seconds
         },
     },
 )

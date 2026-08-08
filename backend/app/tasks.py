@@ -316,8 +316,10 @@ def run_tool_scan(self, job_id: int):
 # ── periodic maintenance ────────────────────────────────────────────
 
 # Jobs stuck RUNNING longer than this are considered lost (worker crash,
-# network partition, etc.) and will be reaped.
-_STUCK_JOB_TIMEOUT_SECONDS = 60 * 30  # 30 minutes
+# network partition, etc.) and will be reaped.  5 min is generous — no
+# legitimate tool takes > 2 min (theHarvester with CRT.sh timeout + retry
+# is ~60 s; Nmap/HTTPX are similar).
+_STUCK_JOB_TIMEOUT_SECONDS = 60 * 5  # 5 minutes
 
 
 @celery_app.task
