@@ -59,6 +59,26 @@ function ExplanationBlock({ finding }: { finding: Finding }) {
   );
 }
 
+function EmailPresenceBody({ data }: Record<string, any>) {
+  const services: { name: string; domain: string }[] = data.services || [];
+  return (
+    <div className="space-y-1.5">
+      <Field label="Email">{data.email}{data.email && <CopyButton value={data.email} />}</Field>
+      <Field label="Services">{data.total_count}</Field>
+      <div className="flex items-start gap-2 text-sm">
+        <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+          Trouvé sur
+        </span>
+        <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto">
+          {services.map((s) => (
+            <Chip key={s.name} value={s.domain || s.name} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── body renderers per finding_type ─────────────────────────────────── */
 
 function HostInfoBody({ data }: Record<string, any>) {
@@ -282,6 +302,56 @@ function HttpServiceBody({ data }: Record<string, any>) {
   );
 }
 
+function SslCertificateBody({ data }: Record<string, any>) {
+  const expired = data.expired;
+  const days = data.days_left;
+  const urgent = expired || (days != null && days <= 14);
+  const daysColor = expired ? "var(--critical)" : urgent ? "var(--high)" : "var(--success)";
+  return (
+    <div className="space-y-1.5">
+      <Field label="Domaine">{data.domain}{data.domain && <CopyButton value={data.domain} />}</Field>
+      <Field label="Émetteur">{data.issuer || "inconnu"}</Field>
+      <Field label="Valide du">{data.not_before}</Field>
+      <Field label="Expire le">{data.not_after}</Field>
+      <Field label="Jours restants">
+        <span className="text-lg font-extrabold" style={{ color: daysColor, fontFamily: "var(--font-manrope)" }}>
+          {days ?? "?"}
+        </span>
+      </Field>
+      <Field label="Clé">{data.key_type} {data.key_size} bits</Field>
+      <Field label="Signature">{data.signature_algorithm}</Field>
+      {data.serial_hex && (
+        <Field label="N° de série">
+          <span className="text-[11px] mono break-all">{data.serial_hex}</span>
+        </Field>
+      )}
+      {data.fingerprint_sha256 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+            Empreinte
+          </span>
+          <span className="text-[10px] mono break-all" style={{ color: "var(--text-primary)" }}>
+            {data.fingerprint_sha256}
+            <CopyButton value={data.fingerprint_sha256} />
+          </span>
+        </div>
+      )}
+      {data.sans?.length > 0 && (
+        <div className="flex items-start gap-2 text-sm">
+          <span className="text-[11px] w-[6.5rem] shrink-0 pt-0.5 font-medium uppercase tracking-[0.04em]" style={{ color: "var(--text-secondary)" }}>
+            SANs
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {data.sans.map((name: string) => (
+              <Chip key={name} value={name} copy />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiscoveredAssetsBody({ data }: Record<string, any>) {
   const items: string[] = data.items || [];
   const category = data.category || "";
@@ -319,6 +389,8 @@ const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, 
   email_security: EmailSecurityBody,
   discovered_assets: DiscoveredAssetsBody,
   http_service: HttpServiceBody,
+  email_presence: EmailPresenceBody,
+  ssl_certificate: SslCertificateBody,
 };
 
 /* ── FindingCard ──────────────────────────────────────────────────────── */

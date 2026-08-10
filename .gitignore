@@ -226,3 +226,6 @@ node_modules/
 .idea/
 /scan_output/
 /lab/inventory.yml
+CLAUDE.md
+context.md
+pre.md

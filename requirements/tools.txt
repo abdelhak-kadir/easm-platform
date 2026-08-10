@@ -1,3 +1,4 @@
 git+https://github.com/laramies/theHarvester.git@4.11.1
 shodan
 python-whois
+holehe

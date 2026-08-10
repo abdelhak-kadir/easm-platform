@@ -20,10 +20,12 @@ export interface Asset {
 
 export interface ScanJob {
   id: number;
+  asset_id: number;
   tool: string;
   status: string;
   error_message?: string | null;
   created_at?: string;
+  started_at?: string;
   completed_at?: string;
   spawned_asset_id?: number | null;
   spawned_asset_value?: string | null;
@@ -100,4 +102,85 @@ export interface AcceptDiscoveredResult {
 
 export interface AcceptDiscoveredResponse {
   created: AcceptDiscoveredResult[];
+}
+
+// GET /scans/discovery/{run_id}
+export interface DiscoveryRunStatus {
+  id: number;
+  root_asset: { id: number | null; value: string | null };
+  round_number: number;
+  max_rounds: number;
+  status: string; // "running" | "completed" | "max_rounds_reached" | "cancelled"
+  assets: { total: number; pending: number; running: number; done: number };
+  active_jobs: number;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+// GET /assets/{asset_id}/risk
+export interface AssetRisk {
+  asset_id: number;
+  score: number;
+  max_score: number;
+  breakdown: Record<string, number>;
+  finding_count: number;
+  cve_count: number;
+  exposed_ports: number;
+  last_scan: string | null;
+}
+
+// GET /scans/asset/{asset_id}/diff
+export interface DiffChangedKey {
+  key: string;
+  old?: any;
+  new?: any;
+  added_items?: string[];
+  removed_items?: string[];
+}
+
+export interface DiffEntry {
+  tool: string;
+  latest_version: number;
+  previous_version: number;
+  added_keys: string[];
+  removed_keys: string[];
+  changed_keys: DiffChangedKey[];
+}
+
+export interface AssetDiffResponse {
+  asset_id: number;
+  diffs: DiffEntry[];
+}
+
+// GET /assets/{asset_id}/dashboard
+export interface DashboardToolSummary {
+  tool: string;
+  applicable: boolean;
+  latest_job: ScanJob | null;
+  latest_status: string | null;
+  job_count: number;
+  finding_count: number;
+  severities: Record<Severity, number>;
+  last_completed_at: string | null;
+}
+
+export interface RelatedAssetGroup {
+  asset: Asset;
+  relation: "child" | "parent" | "both";
+  links: ScanJob[];
+  scans: ScanJob[];
+  summary: {
+    latest_status: string | null;
+    finding_count: number;
+    severities: Record<Severity, number>;
+  };
+}
+
+export interface AssetDashboardResponse {
+  asset: Asset;
+  scans: ScanJob[];
+  related_assets: RelatedAssetGroup[];
+  tool_summary: DashboardToolSummary[];
+  risk: AssetRisk | null;
+  generated_at: string;
 }

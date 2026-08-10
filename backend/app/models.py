@@ -1,7 +1,16 @@
 import enum
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +56,9 @@ class ToolName(enum.StrEnum):
     HIBP = "hibp"
     REVERSE_DNS = "reverse_dns"
     SUBFINDER = "subfinder"
+    HOLEHE = "holehe"
+    SSL_CHECKER = "ssl_checker"
+    CERTSPOTTER = "certspotter"
 
 
 class Severity(enum.StrEnum):
@@ -55,6 +67,16 @@ class Severity(enum.StrEnum):
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+class RunStatus:
+    """String constants for DiscoveryRun.status — not a DB enum (column is
+    String(20)), but centralized here so typos don't silently break guards."""
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    MAX_ROUNDS_REACHED = "max_rounds_reached"
+    CANCELLED = "cancelled"
 
 
 class Asset(Base):
@@ -71,7 +93,12 @@ class Asset(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    __table_args__ = (UniqueConstraint("value", "asset_type", name="uq_asset_value_type"),)
+    __table_args__ = (
+        UniqueConstraint("value", "asset_type", name="uq_asset_value_type"),
+        # Hot path: schedule_round queries PENDING assets by run,
+        # get_run_status counts assets by (run, status).
+        Index("ix_assets_run_status", "discovery_run_id", "status"),
+    )
 
     scan_jobs: Mapped[list["ScanJob"]] = relationship(
         back_populates="asset", foreign_keys="[ScanJob.asset_id]"
@@ -83,6 +110,10 @@ class Asset(Base):
 
 class ScanJob(Base):
     __tablename__ = "scan_jobs"
+    __table_args__ = (
+        # _collect_spawned_assets filters on spawned_asset_id.
+        Index("ix_scan_jobs_spawned_asset", "spawned_asset_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), nullable=False)
@@ -104,6 +135,7 @@ class ScanJob(Base):
 
 class ScanResult(Base):
     __tablename__ = "scan_results"
+    __table_args__ = (Index("ix_scan_results_job", "scan_job_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scan_job_id: Mapped[int] = mapped_column(ForeignKey("scan_jobs.id"), nullable=False)
@@ -117,6 +149,7 @@ class ScanResult(Base):
 
 class Finding(Base):
     __tablename__ = "findings"
+    __table_args__ = (Index("ix_findings_result", "scan_result_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     scan_result_id: Mapped[int] = mapped_column(ForeignKey("scan_results.id"), nullable=False)
@@ -131,6 +164,15 @@ class Finding(Base):
 
 class DiscoveryRun(Base):
     __tablename__ = "discovery_runs"
+    __table_args__ = (
+        # create_discovery_run checks for existing active run by root.
+        Index("ix_discovery_runs_root_status", "root_asset_id", "status"),
+        # Reject invalid status strings at the DB level.
+        CheckConstraint(
+            "status IN ('running', 'completed', 'max_rounds_reached', 'cancelled')",
+            name="ck_discovery_runs_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     root_asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id"), nullable=False)

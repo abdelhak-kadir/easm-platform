@@ -16,7 +16,7 @@ export default function AssetSearch({
   assets: Asset[];
   selectedAssetId?: number | null;
   onSelect: (asset: Asset) => void;
-  onCreate: (value: string, assetType: string) => Promise<Asset>;
+  onCreate: (value: string, assetType?: string) => Promise<Asset>;
 }) {
   const [query, setQuery] = useState("");
   const [newValue, setNewValue] = useState("");
