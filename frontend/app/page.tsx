@@ -185,6 +185,7 @@ export default function Home() {
         selectedAssetValue={asset?.value ?? null}
         onTriggerScan={asset ? triggerScan : undefined}
         scanning={busy}
+        onBackToDashboard={asset ? () => selectAsset(null) : undefined}
       />
 
       <div className="flex flex-1" style={{ height: "calc(100vh - 3.5rem)" }}>
@@ -214,6 +215,19 @@ export default function Home() {
           ) : (
             /* ── Asset selected ── */
             <div className="max-w-4xl mx-auto">
+              {/* Back navigation */}
+              <button
+                onClick={() => selectAsset(null)}
+                className="flex items-center gap-1.5 text-xs font-semibold mb-4 px-3 py-1.5 rounded-full transition-all hover:opacity-80"
+                style={{
+                  color: "var(--brand-accent)",
+                  background: "var(--brand-dim)",
+                  border: "1px solid var(--brand-accent)",
+                }}
+              >
+                <span>←</span> Tableau de bord
+              </button>
+
               {/* Asset header + scan / discovery buttons */}
               <div
                 className="panel flex items-center justify-between px-5 py-4 mb-5"

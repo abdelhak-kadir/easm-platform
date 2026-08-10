@@ -7,6 +7,7 @@ type Props = {
   selectedAssetValue: string | null;
   onTriggerScan?: () => void;
   scanning?: boolean;
+  onBackToDashboard?: () => void;
 };
 
 function getInitialTheme(): "light" | "dark" {
@@ -21,6 +22,7 @@ export default function TopNav({
   selectedAssetValue,
   onTriggerScan,
   scanning,
+  onBackToDashboard,
 }: Props) {
   const live = activeScanCount > 0;
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -50,17 +52,31 @@ export default function TopNav({
       <div className="h-full px-6 flex items-center justify-between">
         {/* Left: context breadcrumb */}
         <div className="flex items-center gap-3">
+          {/* EASM home link */}
+          <button
+            onClick={onBackToDashboard}
+            className="text-sm font-extrabold transition-colors hover:opacity-70"
+            style={{ color: "var(--brand-accent)", fontFamily: "var(--font-manrope)" }}
+          >
+            EASM
+          </button>
+
           {selectedAssetValue ? (
             <>
-              <span
-                className="text-xs font-semibold uppercase tracking-wider"
-                style={{ color: "var(--text-secondary)" }}
+              <span style={{ color: "var(--border)" }}>|</span>
+              <button
+                onClick={onBackToDashboard}
+                className="flex items-center gap-1.5 transition-colors hover:opacity-70"
               >
-                Cible
-              </span>
-              <span className="mono text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                {selectedAssetValue}
-              </span>
+                <span className="text-[10px]" style={{ color: "var(--text-secondary)" }}>←</span>
+                <span className="text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--text-secondary)" }}>
+                  Cible
+                </span>
+                <span className="mono text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                  {selectedAssetValue}
+                </span>
+              </button>
               {onTriggerScan && (
                 <button
                   onClick={onTriggerScan}
