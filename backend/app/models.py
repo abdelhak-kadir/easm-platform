@@ -57,6 +57,8 @@ class ToolName(enum.StrEnum):
     REVERSE_DNS = "reverse_dns"
     SUBFINDER = "subfinder"
     HOLEHE = "holehe"
+    SSL_CHECKER = "ssl_checker"
+    CERTSPOTTER = "certspotter"
 
 
 class Severity(enum.StrEnum):

@@ -27,6 +27,8 @@ from app.tools.amass import parse as amass_parse
 from app.tools.amass import scan as amass_scan
 from app.tools.censys import parse as censys_parse
 from app.tools.censys import scan as censys_scan
+from app.tools.certspotter import parse as certspotter_parse
+from app.tools.certspotter import scan as certspotter_scan
 from app.tools.email_security import parse as email_security_parse
 from app.tools.email_security import scan as email_security_scan
 from app.tools.holehe import parse as holehe_parse
@@ -41,6 +43,8 @@ from app.tools.reverse_dns import parse as reverse_dns_parse
 from app.tools.reverse_dns import scan as reverse_dns_scan
 from app.tools.shodan import parse as shodan_parse
 from app.tools.shodan import scan as shodan_scan
+from app.tools.ssl_checker import parse as ssl_checker_parse
+from app.tools.ssl_checker import scan as ssl_checker_scan
 from app.tools.subfinder import parse as subfinder_parse
 from app.tools.subfinder import scan as subfinder_scan
 from app.tools.theharvester import parse as theharvester_parse
@@ -198,6 +202,18 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=holehe_scan.run,
         parse=holehe_parse.parse,
         asset_types=frozenset({AssetType.EMAIL}),
+    ),
+    ToolName.CERTSPOTTER: ToolSpec(
+        tool=ToolName.CERTSPOTTER,
+        run=certspotter_scan.run,
+        parse=certspotter_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+    ),
+    ToolName.SSL_CHECKER: ToolSpec(
+        tool=ToolName.SSL_CHECKER,
+        run=ssl_checker_scan.run,
+        parse=ssl_checker_parse.parse,
+        asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
     ),
 }
 
