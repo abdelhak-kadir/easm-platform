@@ -574,6 +574,92 @@ def get_scan_results(job_id: int, db: DBSession):
     }
 
 
+@router.get("/asset/{asset_id}/diff")
+def diff_scan_results(asset_id: int, db: DBSession, tool: ToolName | None = None):
+    """Compare the latest two ScanResult versions per tool for *asset_id*.
+
+    Returns a list of diffs, one per tool that has ≥2 completed scans
+    with recorded results.  Each diff entry tells you which top-level
+    keys were added, removed, or changed between the previous and latest
+    version.
+
+    Optional *tool* query param limits the diff to a single tool.
+    """
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    # Gather completed jobs for this asset, grouped by tool
+    tool_names = [tool] if tool else None
+    jobs_query = db.query(ScanJob).filter(
+        ScanJob.asset_id == asset_id,
+        ScanJob.status == ScanStatus.COMPLETED,
+    )
+    if tool_names:
+        jobs_query = jobs_query.filter(ScanJob.tool.in_(tool_names))
+
+    jobs = jobs_query.order_by(ScanJob.created_at.asc()).all()
+
+    # Group results by tool
+    tool_results: dict[ToolName, list[ScanResult]] = {}
+    for job in jobs:
+        for result in job.results:
+            if result.raw_data:  # skip empty results (no-data outcomes)
+                tool_results.setdefault(job.tool, []).append(result)
+
+    diffs: list[dict] = []
+    for tool_name, results in tool_results.items():
+        if len(results) < 2:
+            continue
+        # results are already in chronological order (jobs ordered asc)
+        prev = results[-2]
+        latest = results[-1]
+        entry = _diff_dicts(prev.raw_data, latest.raw_data)
+        entry["tool"] = tool_name
+        entry["latest_version"] = latest.version
+        entry["previous_version"] = prev.version
+        diffs.append(entry)
+
+    return {"asset_id": asset_id, "diffs": diffs}
+
+
+def _diff_dicts(prev: dict, latest: dict) -> dict:
+    """Shallow key comparison of two dicts, with list-aware value handling.
+
+    For list values the diff reports added / removed items; for scalar
+    values it reports old → new.  Keys present in only one dict are
+    reported as added or removed.
+    """
+    all_keys = set(prev) | set(latest)
+    added: list[str] = []
+    removed: list[str] = []
+    changed: list[dict] = []
+
+    for key in sorted(all_keys):
+        old = prev.get(key)
+        new = latest.get(key)
+
+        if key not in prev:
+            added.append(key)
+        elif key not in latest:
+            removed.append(key)
+        elif isinstance(old, list) and isinstance(new, list):
+            old_set = set(old)
+            new_set = set(new)
+            if old_set != new_set:
+                changed.append(
+                    {
+                        "key": key,
+                        "added_items": sorted(new_set - old_set),
+                        "removed_items": sorted(old_set - new_set),
+                    }
+                )
+        elif old != new:
+            changed.append({"key": key, "old": old, "new": new})
+
+    return {"added_keys": added, "removed_keys": removed, "changed_keys": changed}
+
+
 @router.get("/asset/{asset_id}")
 def list_scans_for_asset(asset_id: int, db: DBSession):
     asset = db.get(Asset, asset_id)

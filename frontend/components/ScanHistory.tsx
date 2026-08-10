@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Asset, ScanJob } from "../types/scan";
+import { Asset, ScanJob, AssetDiffResponse } from "../types/scan";
 import { timeAgo, formatElapsed } from "../lib/time";
 import { toolLabel } from "../lib/labels";
 import StatusBadge from "./StatusBadge";
@@ -28,6 +28,21 @@ export default function ScanHistory({
 }: Props) {
   const [jobs, setJobs] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(false);
+  const [diffData, setDiffData] = useState<AssetDiffResponse | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+
+  function fetchDiff() {
+    if (!asset) return;
+    setDiffLoading(true);
+    fetch(`${apiBase}/scans/asset/${asset.id}/diff`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data: AssetDiffResponse) => setDiffData(data))
+      .catch(() => setDiffData(null))
+      .finally(() => setDiffLoading(false));
+  }
 
   const loadJobs = useCallback(() => {
     if (!asset) return;
@@ -187,6 +202,112 @@ export default function ScanHistory({
   return (
     <div className="mb-6">
       <p className="eyebrow mb-3">Historique des analyses</p>
+
+      {/* ── Diff button ─────────────────────────────────── */}
+      <div className="mb-3">
+        {!diffData ? (
+          <button
+            onClick={fetchDiff}
+            disabled={diffLoading}
+            className="text-[10px] font-semibold uppercase px-3 py-1 rounded-full transition-colors"
+            style={{
+              color: "var(--brand-accent)",
+              background: "var(--brand-dim)",
+              border: "1px solid var(--brand-accent)",
+              opacity: diffLoading ? 0.5 : 1,
+            }}
+          >
+            {diffLoading ? "Comparaison..." : "Comparer les résultats"}
+          </button>
+        ) : (
+          <button
+            onClick={() => setDiffData(null)}
+            className="text-[10px] font-semibold uppercase px-3 py-1 rounded-full transition-colors"
+            style={{
+              color: "var(--text-secondary)",
+              background: "var(--panel-dim)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Masquer la comparaison
+          </button>
+        )}
+      </div>
+
+      {/* ── Diff results ─────────────────────────────────── */}
+      {diffData && diffData.diffs.length === 0 && (
+        <div
+          className="text-xs px-4 py-3 rounded-md mb-3"
+          style={{ color: "var(--text-secondary)", background: "var(--panel-dim)" }}
+        >
+          Aucune différence détectée — chaque outil n&apos;a qu&apos;une seule version de résultats.
+        </div>
+      )}
+      {diffData && diffData.diffs.length > 0 && (
+        <div className="space-y-3 mb-3">
+          {diffData.diffs.map((d) => (
+            <div
+              key={d.tool}
+              className="panel card-pad text-xs"
+              style={{ borderLeft: "3px solid var(--brand-accent)" }}
+            >
+              <p className="font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+                {toolLabel(d.tool)}{" "}
+                <span style={{ color: "var(--text-secondary)" }}>
+                  v{d.previous_version} → v{d.latest_version}
+                </span>
+              </p>
+
+              {d.added_keys.length > 0 && (
+                <div className="mb-1">
+                  <span className="font-semibold" style={{ color: "var(--success)" }}>
+                    +{d.added_keys.length} nouveau{d.added_keys.length !== 1 ? "x" : ""} champ{d.added_keys.length !== 1 ? "s" : ""}:{" "}
+                  </span>
+                  <span style={{ color: "var(--text-secondary)" }}>{d.added_keys.join(", ")}</span>
+                </div>
+              )}
+              {d.removed_keys.length > 0 && (
+                <div className="mb-1">
+                  <span className="font-semibold" style={{ color: "var(--critical)" }}>
+                    −{d.removed_keys.length} champ{d.removed_keys.length !== 1 ? "s" : ""} retiré{d.removed_keys.length !== 1 ? "s" : ""}:{" "}
+                  </span>
+                  <span style={{ color: "var(--text-secondary)" }}>{d.removed_keys.join(", ")}</span>
+                </div>
+              )}
+              {d.changed_keys.map((ck) => (
+                <div key={ck.key} className="mb-1">
+                  <span className="font-semibold" style={{ color: "var(--high)" }}>
+                    ~ {ck.key}:{" "}
+                  </span>
+                  {ck.added_items && ck.removed_items ? (
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      <span style={{ color: "var(--success)" }}>
+                        +{ck.added_items.length}
+                      </span>
+                      {" / "}
+                      <span style={{ color: "var(--critical)" }}>
+                        −{ck.removed_items.length}
+                      </span>
+                      {" élément(s)"}
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      <span style={{ textDecoration: "line-through", color: "var(--critical)" }}>
+                        {JSON.stringify(ck.old)}
+                      </span>
+                      {" → "}
+                      <span style={{ color: "var(--success)" }}>
+                        {JSON.stringify(ck.new)}
+                      </span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="panel divide-y" style={{ borderColor: "var(--border)" }}>
         {/* Running / pending */}
         {running.length > 0 && (

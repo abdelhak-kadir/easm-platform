@@ -6,6 +6,10 @@ def parse(raw_data: dict) -> list[dict]:
 
     Produces one ``host_info`` finding (IP, hostnames, OS, port list)
     plus one ``open_port`` finding per detected service.
+
+    When a service carries both a ``product`` and ``version``, the
+    Shodan CVEDB is queried (best-effort, cached) and any matched CVEs
+    are emitted as ``vulnerability`` findings with CVSS-derived severity.
     """
     findings: list[dict] = []
 
@@ -16,7 +20,53 @@ def parse(raw_data: dict) -> list[dict]:
     for port_info in raw_data.get("ports") or []:
         findings.append(_parse_port(port_info))
 
+    # ── CVE correlation (best-effort, cached) ──────────────────────
+    for port_info in raw_data.get("ports") or []:
+        product = port_info.get("product") or ""
+        version = port_info.get("version") or ""
+        if product and version:
+            findings.extend(_correlate_cves(product, version))
+
     return findings
+
+
+def _correlate_cves(product: str, version: str) -> list[dict]:
+    """Best-effort CVE lookup for a detected service version.
+
+    Failures are silent — the port finding still exists; CVEs are a bonus.
+    """
+    try:
+        from app.lib.cve import lookup_cves
+    except ImportError:  # pragma: no cover
+        return []
+
+    cves = lookup_cves(product, version)
+    findings: list[dict] = []
+    for cve in cves:
+        findings.append(
+            {
+                "finding_type": "vulnerability",
+                "title": cve["cve_id"],
+                "severity": _severity_from_cvss(cve.get("cvss", 0)),
+                "data": {
+                    "cvss": cve.get("cvss", 0),
+                    "summary": cve.get("summary", ""),
+                },
+            }
+        )
+    return findings
+
+
+def _severity_from_cvss(cvss: float) -> Severity:
+    if cvss >= 9.0:
+        return Severity.CRITICAL
+    if cvss >= 7.0:
+        return Severity.HIGH
+    if cvss >= 4.0:
+        return Severity.MEDIUM
+    if cvss >= 0.1:
+        return Severity.LOW
+    return Severity.INFO
 
 
 def _parse_host_info(result: dict) -> dict:

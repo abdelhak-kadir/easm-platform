@@ -6,18 +6,16 @@ from app.tools.base import ToolNoDataError, ToolScanError
 
 _logger = logging.getLogger(__name__)
 
-# 120 s is generous for passive enumeration — Amass v4 queries public APIs
-# (cr t.sh, AbuseIPDB, etc.) which typically respond within seconds.  If
-# it takes longer than this something is wrong (network partition, API
-# outage, hung subprocess) and the orchestrator needs the failure signal
-# promptly so it can advance the wave.
-_AMASS_TIMEOUT_S = 120  # 2 min subprocess timeout
+# Amass v4 produces subdomain results quickly (5-10 s) but then hangs
+# indefinitely while resolving A/AAAA/NS records of every node in the
+# edge graph.  A 90 s timeout catches the useful output and kills the
+# tail-end DNS resolution.  If stdout is non-empty after the kill we
+# treat it as a clean completion, not a failure.
+_AMASS_TIMEOUT_S = 90
 
-# Passed to amass -timeout (minutes per data source).  3 min is
-# conservative — most sources respond within 10-30 s.  This cap
-# prevents a single slow source (e.g. a rate-limited API) from
-# dragging the whole enumeration past the subprocess timeout.
-_AMASS_SOURCE_TIMEOUT = "3"  # minutes
+# Per-source timeout passed to amass -timeout (minutes).  2 min is
+# generous — most APIs respond in 10-30 s.
+_AMASS_SOURCE_TIMEOUT = "2"
 
 # Amass v4 edge-format line: ``source (FQDN) --> relation --> target (FQDN)``
 # Extract every ``name (FQDN)`` token from these lines.
@@ -35,12 +33,19 @@ class AmassNoDataError(AmassScanError, ToolNoDataError):
 def run(asset_value: str) -> dict:
     """Passive subdomain enumeration via OWASP Amass CLI (v4).
 
-    Amass v4 outputs results directly to stdout in edge format::
+    Amass v4 outputs edge-format results to stdout::
 
         sub.example.com (FQDN) --> a_record --> 1.2.3.4 (IPAddress)
 
     We extract every FQDN token, filter to subdomains of the target, and
     discard the edge-relationship metadata.
+
+    **Important**: Amass v4 does NOT exit cleanly with ``-passive`` — it
+    keeps running DNS resolution on non-subdomain nodes (NS records, ASN
+    edges, netblocks) long after the subdomain results are emitted.  The
+    subprocess timeout is deliberately tight and treated as a **normal
+    completion path** — if stdout was captured before the kill we parse
+    it and return results.
     """
     domain = asset_value.strip().lower().rstrip(".")
 
@@ -65,6 +70,10 @@ def run(asset_value: str) -> dict:
         _AMASS_SOURCE_TIMEOUT,
     )
 
+    stdout = ""
+    stderr = ""
+    timed_out = False
+
     try:
         proc = subprocess.run(
             cmd,
@@ -72,9 +81,28 @@ def run(asset_value: str) -> dict:
             capture_output=True,
             text=True,
         )
+        stdout = proc.stdout or ""
+        stderr = (proc.stderr or "").strip()
+        if proc.returncode != 0:
+            _logger.warning(
+                "Amass enum exited %d for %s (stderr: %s)",
+                proc.returncode,
+                domain,
+                stderr[:500] if stderr else "(empty)",
+            )
     except subprocess.TimeoutExpired as e:
-        _logger.error("Amass enum timed out after %ds for %s", _AMASS_TIMEOUT_S, domain)
-        raise AmassScanError(f"Amass enum timed out after {_AMASS_TIMEOUT_S}s for {domain}") from e
+        # Amass v4 hangs after producing subdomain output — this is
+        # EXPECTED behaviour.  Read whatever it wrote to stdout before
+        # the kill and treat it as a successful partial result.
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "").strip() if isinstance(e.stderr, str) else ""
+        timed_out = True
+        _logger.info(
+            "Amass enum timed out after %ds for %s — parsing partial output (%d bytes)",
+            _AMASS_TIMEOUT_S,
+            domain,
+            len(stdout),
+        )
     except FileNotFoundError:
         _logger.error("Amass binary not found on PATH")
         raise AmassScanError(
@@ -85,28 +113,25 @@ def run(asset_value: str) -> dict:
         _logger.error("Amass enum OS error for %s: %s", domain, e)
         raise AmassScanError(f"Amass enum OS error for {domain}: {e}") from e
 
-    # Amass v4 can return non-zero exit codes for transient issues
-    # (DNS failures, API rate limits) that still produce partial results.
-    # We log the error but try to parse whatever output we got.
-    stderr = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        _logger.warning(
-            "Amass enum exited %d for %s (stderr: %s)",
-            proc.returncode,
-            domain,
-            stderr[:500] if stderr else "(empty)",
-        )
-
-    hosts = sorted(_filter_subdomains(_extract_fqdns(proc.stdout), domain))
+    hosts = sorted(_filter_subdomains(_extract_fqdns(stdout), domain))
 
     if not hosts:
         detail = ""
         if stderr:
             detail = f": {stderr[:200]}"
+        if timed_out:
+            detail = (
+                f" (timed out after {_AMASS_TIMEOUT_S}s, no subdomains in partial output){detail}"
+            )
         _logger.info("Amass enum found no subdomains for %s%s", domain, detail)
         raise AmassNoDataError(f"No subdomains found for {domain}{detail}")
 
-    _logger.info("Amass enum found %d subdomain(s) for %s", len(hosts), domain)
+    _logger.info(
+        "Amass enum found %d subdomain(s) for %s%s",
+        len(hosts),
+        domain,
+        " (partial output after timeout)" if timed_out else "",
+    )
 
     return {
         "domain": domain,

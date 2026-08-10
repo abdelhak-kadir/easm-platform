@@ -20,6 +20,7 @@ export interface Asset {
 
 export interface ScanJob {
   id: number;
+  asset_id: number;
   tool: string;
   status: string;
   error_message?: string | null;
@@ -114,4 +115,39 @@ export interface DiscoveryRunStatus {
   active_jobs: number;
   created_at: string | null;
   completed_at: string | null;
+}
+
+// GET /assets/{asset_id}/risk
+export interface AssetRisk {
+  asset_id: number;
+  score: number;
+  max_score: number;
+  breakdown: Record<string, number>;
+  finding_count: number;
+  cve_count: number;
+  exposed_ports: number;
+  last_scan: string | null;
+}
+
+// GET /scans/asset/{asset_id}/diff
+export interface DiffChangedKey {
+  key: string;
+  old?: any;
+  new?: any;
+  added_items?: string[];
+  removed_items?: string[];
+}
+
+export interface DiffEntry {
+  tool: string;
+  latest_version: number;
+  previous_version: number;
+  added_keys: string[];
+  removed_keys: string[];
+  changed_keys: DiffChangedKey[];
+}
+
+export interface AssetDiffResponse {
+  asset_id: number;
+  diffs: DiffEntry[];
 }

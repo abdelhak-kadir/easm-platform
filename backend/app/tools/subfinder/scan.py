@@ -5,8 +5,16 @@ from app.tools.base import ToolNoDataError, ToolScanError
 
 _logger = logging.getLogger(__name__)
 
-_SUBFINDER_TIMEOUT_S = 120  # 2 min — passive enum via public APIs
-_SUBFINDER_SOURCE_TIMEOUT = "30"  # seconds per source, passed to subfinder -timeout
+# subprocess.run() timeout — hard cap.  If Subfinder runs longer than this
+# the process is killed and any partial stdout is parsed.
+_SUBFINDER_TIMEOUT_S = 120  # 2 min
+
+# Passed to subfinder -timeout (SECONDS per source, default 30).
+_SUBFINDER_SOURCE_TIMEOUT = "30"
+
+# Passed to subfinder -max-time (MINUTES for the whole enumeration, default 10).
+# We cap this tightly because the subprocess timeout above is the real hard limit.
+_SUBFINDER_MAX_TIME = "2"
 
 
 class SubfinderScanError(ToolScanError):
@@ -20,10 +28,10 @@ class SubfinderNoDataError(SubfinderScanError, ToolNoDataError):
 def run(asset_value: str) -> dict:
     """Passive subdomain enumeration via Subfinder CLI.
 
-    Shells out to ``subfinder -d <domain> -silent -timeout <n>`` and
-    returns discovered hostnames.  Non-zero exit codes are logged but
-    partial output is parsed anyway — Subfinder sometimes exits 1 after
-    transient source failures while still producing valid results.
+    Shells out to ``subfinder -d <domain> -silent`` and returns discovered
+    hostnames.  The subprocess timeout is a hard cap — if Subfinder hangs
+    (e.g. a stuck DNS query) the process is killed and any partial output
+    is parsed rather than discarded.
     """
     domain = asset_value.strip().lower().rstrip(".")
 
@@ -37,14 +45,21 @@ def run(asset_value: str) -> dict:
         "-silent",
         "-timeout",
         _SUBFINDER_SOURCE_TIMEOUT,
+        "-max-time",
+        _SUBFINDER_MAX_TIME,
     ]
 
     _logger.info(
-        "Subfinder starting for %s (timeout=%ds, source_timeout=%ss)",
+        "Subfinder starting for %s (timeout=%ds, source_timeout=%ss, max_time=%smin)",
         domain,
         _SUBFINDER_TIMEOUT_S,
         _SUBFINDER_SOURCE_TIMEOUT,
+        _SUBFINDER_MAX_TIME,
     )
+
+    stdout = ""
+    stderr = ""
+    timed_out = False
 
     try:
         proc = subprocess.run(
@@ -53,11 +68,25 @@ def run(asset_value: str) -> dict:
             capture_output=True,
             text=True,
         )
+        stdout = proc.stdout or ""
+        stderr = (proc.stderr or "").strip()
+        if proc.returncode != 0:
+            _logger.warning(
+                "Subfinder exited %d for %s (stderr: %s)",
+                proc.returncode,
+                domain,
+                stderr[:500] if stderr else "(empty)",
+            )
     except subprocess.TimeoutExpired as e:
-        _logger.error("Subfinder timed out after %ds for %s", _SUBFINDER_TIMEOUT_S, domain)
-        raise SubfinderScanError(
-            f"Subfinder timed out after {_SUBFINDER_TIMEOUT_S}s for {domain}"
-        ) from e
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "").strip() if isinstance(e.stderr, str) else ""
+        timed_out = True
+        _logger.info(
+            "Subfinder timed out after %ds for %s — parsing partial output (%d bytes)",
+            _SUBFINDER_TIMEOUT_S,
+            domain,
+            len(stdout),
+        )
     except FileNotFoundError:
         _logger.error("Subfinder binary not found on PATH")
         raise SubfinderScanError(
@@ -68,25 +97,26 @@ def run(asset_value: str) -> dict:
         _logger.error("Subfinder OS error for %s: %s", domain, e)
         raise SubfinderScanError(f"Subfinder OS error for {domain}: {e}") from e
 
-    stderr = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        _logger.warning(
-            "Subfinder exited %d for %s (stderr: %s)",
-            proc.returncode,
-            domain,
-            stderr[:500] if stderr else "(empty)",
-        )
-
-    hosts = sorted(_filter_subdomains(proc.stdout.splitlines(), domain))
+    hosts = sorted(_filter_subdomains(stdout.splitlines(), domain))
 
     if not hosts:
         detail = ""
         if stderr:
             detail = f": {stderr[:200]}"
+        if timed_out:
+            detail = (
+                f" (timed out after {_SUBFINDER_TIMEOUT_S}s,"
+                f" no subdomains in partial output){detail}"
+            )
         _logger.info("Subfinder found no subdomains for %s%s", domain, detail)
         raise SubfinderNoDataError(f"No subdomains found for {domain}{detail}")
 
-    _logger.info("Subfinder found %d subdomain(s) for %s", len(hosts), domain)
+    _logger.info(
+        "Subfinder found %d subdomain(s) for %s%s",
+        len(hosts),
+        domain,
+        " (partial output after timeout)" if timed_out else "",
+    )
 
     return {
         "domain": domain,

@@ -279,13 +279,16 @@ export default function FleetDashboard({
             const hasActive = (health?.activeJobs.length ?? 0) > 0;
             const hasFailed = (health?.failedCount ?? 0) > 0;
             const lastJob = health?.lastJob;
+            const assetJobs = jobs.filter((j) => j.asset_id === a.id);
+            const completedCount = assetJobs.filter((j) => j.status === "completed").length;
+            const totalCount = assetJobs.length;
 
             // Left border color
             let borderColor = "var(--border)";
             if (hasActive) borderColor = "var(--brand-accent)";
             else if (hasFailed) borderColor = "var(--critical)";
-            else if (a.status === "done") borderColor = "var(--success)";
-            else borderColor = "var(--text-secondary)";
+            else if (a.status === "done" && totalCount > 0) borderColor = "var(--success)";
+            else if (totalCount === 0) borderColor = "var(--text-secondary)";
 
             return (
               <button
@@ -309,19 +312,24 @@ export default function FleetDashboard({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                {/* Scan summary row */}
+                <div className="flex items-center gap-2 flex-wrap text-[11px]">
                   {hasActive ? (
-                    <span className="flex items-center gap-1 text-[11px]" style={{ color: "var(--brand-accent)" }}>
+                    <span className="flex items-center gap-1 font-medium" style={{ color: "var(--brand-accent)" }}>
                       <span className="status-dot status-dot--live" />
-                      {health!.activeJobs.length} scan{health!.activeJobs.length !== 1 ? "s" : ""} actif{health!.activeJobs.length !== 1 ? "s" : ""}
-                    </span>
-                  ) : lastJob ? (
-                    <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                      Dernier scan&nbsp;: {toolLabel(lastJob.tool)} · {lastJob.completed_at ? timeAgo(lastJob.completed_at) : "—"}
+                      {health!.activeJobs.length} actif{health!.activeJobs.length !== 1 ? "s" : ""}
                     </span>
                   ) : (
-                    <span className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                      Aucun scan
+                    <span style={{ color: "var(--text-secondary)" }}>
+                      {totalCount > 0
+                        ? `${completedCount}/${totalCount} scan${totalCount !== 1 ? "s" : ""} terminé${totalCount !== 1 ? "s" : ""}`
+                        : "Aucun scan"}
+                    </span>
+                  )}
+
+                  {lastJob && lastJob.status !== "running" && lastJob.status !== "pending" && (
+                    <span style={{ color: "var(--text-secondary)", opacity: 0.7 }}>
+                      · {toolLabel(lastJob.tool).split(" (")[0]} · {lastJob.completed_at ? timeAgo(lastJob.completed_at) : ""}
                     </span>
                   )}
 
@@ -330,13 +338,20 @@ export default function FleetDashboard({
                       className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                       style={{ color: "var(--critical)", background: "var(--critical-dim)" }}
                     >
-                      {health!.failedCount} échec{health!.failedCount !== 1 ? "s" : ""}
+                      {health!.failedCount} échec
                     </span>
                   )}
                 </div>
 
+                {/* Discovery run indicator */}
+                {a.discovery_run_id != null && !hasActive && (
+                  <p className="text-[10px] mt-1.5" style={{ color: "var(--success)" }}>
+                    Découverte terminée
+                  </p>
+                )}
+
                 {lastJob && lastJob.status === "running" && lastJob.started_at && (
-                  <p className="text-[10px] mt-1 tabular-nums" style={{ color: "var(--high)" }}>
+                  <p className="text-[10px] mt-1 tabular-nums font-medium" style={{ color: "var(--high)" }}>
                     Depuis {formatElapsed(lastJob.started_at)}
                   </p>
                 )}

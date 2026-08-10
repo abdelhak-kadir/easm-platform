@@ -4,20 +4,15 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import TopNav from "../components/TopNav";
 import Sidebar from "../components/Sidebar";
 import ScanHistory from "../components/ScanHistory";
-import FindingCard from "../components/FindingCard";
-import StatsSummary from "../components/StatsSummary";
-import SeverityDonut from "../components/SeverityDonut";
-import RiskSummary from "../components/RiskSummary";
-import FindingsToolbar from "../components/FindingsToolbar";
+import ScanDetailPanel from "../components/ScanDetailPanel";
 import FleetDashboard from "../components/FleetDashboard";
 import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
 import SuggestHostsPanel from "../components/SuggestHostsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
-import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
-import ToolExplainer from "../components/ToolExplainer";
-import PlainSummary from "../components/PlainSummary";
+import { Asset, ScanJob, ScanResults, Severity, AssetRisk } from "../types/scan";
 import DiscoveryProgress from "../components/DiscoveryProgress";
+import RiskSummary from "../components/RiskSummary";
 import { ToastContainer, showToast } from "../components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
@@ -39,6 +34,7 @@ export default function Home() {
   const [activeType, setActiveType] = useState<string | null>(null);
 
   const [discovering, setDiscovering] = useState(false);
+  const [risk, setRisk] = useState<AssetRisk | null>(null);
   const findingsRef = useRef<HTMLDivElement>(null);
 
   const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
@@ -51,6 +47,15 @@ export default function Home() {
     setResults(null);
     setAssetJobs([]);
     resetFilters();
+    // Fetch risk score for the selected asset
+    if (a) {
+      fetch(`${API_BASE}/assets/${a.id}/risk`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: AssetRisk | null) => setRisk(data))
+        .catch(() => setRisk(null));
+    } else {
+      setRisk(null);
+    }
   }
 
   function selectAssetById(assetId: number) {
@@ -269,6 +274,13 @@ export default function Home() {
                 />
               )}
 
+              {/* Risk summary */}
+              <RiskSummary
+                findings={results?.findings || []}
+                risk={risk}
+                assetValue={asset.value}
+              />
+
               {/* Scan history */}
               <ScanHistory
                 apiBase={API_BASE}
@@ -280,28 +292,16 @@ export default function Home() {
                 onJumpToAsset={jumpToAsset}
               />
 
-              {/* Failed job banner */}
-              {job && job.status === "failed" && (
-                <div
-                  className="text-sm px-4 py-3 mb-5 rounded-lg"
-                  style={{
-                    color: "var(--critical)",
-                    border: "1px solid var(--critical)",
-                    background: "var(--critical-dim)",
-                  }}
-                >
-                  L'analyse a échoué. Consultez l'historique ci-dessus ou réessayez.
+              {/* ── Scan detail panel (when a job is selected) ──────── */}
+              {job && (
+                <div ref={findingsRef}>
+                  <ScanDetailPanel
+                    job={job}
+                    results={results}
+                    assetValue={asset.value}
+                    apiBase={API_BASE}
+                  />
                 </div>
-              )}
-
-              {/* Tool explainer */}
-              {job && (job.status === "completed" || job.status === "failed") && (
-                <ToolExplainer job={job} findings={results?.findings} />
-              )}
-
-              {/* Plain-language summary */}
-              {results?.findings && results.findings.length > 0 && (
-                <PlainSummary findings={results.findings} />
               )}
 
               {/* Suggestion panels */}
@@ -326,43 +326,6 @@ export default function Home() {
                     setHistoryRefresh((k) => k + 1);
                   }}
                 />
-              )}
-
-              {/* Findings */}
-              {results?.findings && (
-                <section ref={findingsRef} className="mt-5">
-                  <RiskSummary findings={results.findings} assetValue={asset.value} />
-                  <StatsSummary findings={results.findings} />
-                  {results.findings.length > 0 && (
-                    <SeverityDonut findings={results.findings} />
-                  )}
-                  <FindingsToolbar
-                    search={search}
-                    onSearchChange={setSearch}
-                    activeSeverities={activeSeverities}
-                    onToggleSeverity={toggleSeverity}
-                    onSetSeverities={setActiveSeverities}
-                    typeOptions={typeOptions}
-                    activeType={activeType}
-                    onTypeChange={setActiveType}
-                    resultCount={filteredFindings.length}
-                    totalCount={results.findings.length}
-                  />
-
-                  {filteredFindings.length > 0 ? (
-                    filteredFindings.map((f) => <FindingCard key={f.id} finding={f} />)
-                  ) : (
-                    <p
-                      className="text-sm px-4 py-8 text-center rounded-lg"
-                      style={{
-                        color: "var(--text-secondary)",
-                        border: "1px dashed var(--border)",
-                      }}
-                    >
-                      Aucun résultat ne correspond aux filtres actuels.
-                    </p>
-                  )}
-                </section>
               )}
             </div>
           )}
