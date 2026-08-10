@@ -1,5 +1,5 @@
 ruff
-black
+black==24.10.0
 pytest
 pytest-cov
 pre-commit
