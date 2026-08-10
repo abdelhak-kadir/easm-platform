@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── External recon binaries (pre-built Go releases) ───────────────────
 # Subfinder v2.14.0 — passive subdomain discovery
-RUN curl -sL https://github.com/projectdiscovery/subfinder/releases/download/v2.14.0/subfinder_2.14.0_linux_amd64.zip \
+RUN curl -sL --connect-timeout 30 --max-time 300 --retry 3 https://github.com/projectdiscovery/subfinder/releases/download/v2.14.0/subfinder_2.14.0_linux_amd64.zip \
     -o /tmp/sf.zip \
     && unzip -o /tmp/sf.zip -d /usr/local/bin/ subfinder \
     && rm /tmp/sf.zip \
@@ -24,7 +24,7 @@ RUN curl -sL https://github.com/projectdiscovery/subfinder/releases/download/v2.
 # The release zip nests the binary under amass_Linux_amd64/amass rather
 # than at the archive root, so extract to a scratch dir first and move
 # just the binary into place.
-RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass_Linux_amd64.zip \
+RUN curl -sL --connect-timeout 30 --max-time 300 --retry 3 https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass_Linux_amd64.zip \
     -o /tmp/am.zip \
     && unzip -o /tmp/am.zip -d /tmp/am_extract \
     && mv /tmp/am_extract/amass_Linux_amd64/amass /usr/local/bin/amass \
@@ -33,7 +33,7 @@ RUN curl -sL https://github.com/owasp-amass/amass/releases/download/v4.2.0/amass
     && ln -sf /usr/local/bin/amass /usr/local/bin/oam_subs
 
 # Httpx v1.6.9 — HTTP/HTTPS liveness probe
-RUN curl -sL https://github.com/projectdiscovery/httpx/releases/download/v1.6.9/httpx_1.6.9_linux_amd64.zip \
+RUN curl -sL --connect-timeout 30 --max-time 300 --retry 3 https://github.com/projectdiscovery/httpx/releases/download/v1.6.9/httpx_1.6.9_linux_amd64.zip \
     -o /tmp/hx.zip \
     && unzip -o /tmp/hx.zip -d /usr/local/bin/ httpx \
     && rm /tmp/hx.zip \
