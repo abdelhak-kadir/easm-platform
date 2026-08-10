@@ -103,6 +103,9 @@ def run(asset_value: str) -> dict:
             domain,
             len(stdout),
         )
+    except subprocess.CalledProcessError as e:
+        _logger.error("Amass enum exited %d for %s", e.returncode, domain)
+        raise AmassScanError(f"Amass exited {e.returncode} for {domain}") from e
     except FileNotFoundError:
         _logger.error("Amass binary not found on PATH")
         raise AmassScanError(

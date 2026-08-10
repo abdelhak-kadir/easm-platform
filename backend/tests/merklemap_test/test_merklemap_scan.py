@@ -14,9 +14,10 @@ from app.tools.merklemap.scan import (
 
 
 def _mock_resp(json_data=None, *, status_code=200):
-    m = MagicMock()
+    m = MagicMock(spec=requests.Response)
     m.status_code = status_code
     m.json.return_value = json_data if json_data is not None else {}
+    m.raise_for_status = MagicMock()
     return m
 
 
