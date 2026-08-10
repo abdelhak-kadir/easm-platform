@@ -682,6 +682,7 @@ _DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
         ToolName.SUBFINDER,
         ToolName.AMASS,
         ToolName.MERKLEMAP,
+        ToolName.CERTSPOTTER,
     }
 )
 

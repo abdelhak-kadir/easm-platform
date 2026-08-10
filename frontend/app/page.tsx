@@ -3,16 +3,15 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import TopNav from "../components/TopNav";
 import Sidebar from "../components/Sidebar";
-import ScanHistory from "../components/ScanHistory";
+import AssetDashboard from "../components/AssetDashboard";
 import ScanDetailPanel from "../components/ScanDetailPanel";
 import FleetDashboard from "../components/FleetDashboard";
 import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
 import SuggestHostsPanel from "../components/SuggestHostsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
-import { Asset, ScanJob, ScanResults, Severity, AssetRisk } from "../types/scan";
+import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 import DiscoveryProgress from "../components/DiscoveryProgress";
-import RiskSummary from "../components/RiskSummary";
 import { ToastContainer, showToast } from "../components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
@@ -34,7 +33,6 @@ export default function Home() {
   const [activeType, setActiveType] = useState<string | null>(null);
 
   const [discovering, setDiscovering] = useState(false);
-  const [risk, setRisk] = useState<AssetRisk | null>(null);
   const findingsRef = useRef<HTMLDivElement>(null);
 
   const scanning = assetJobs.some((j) => ACTIVE_STATUSES.has(j.status));
@@ -47,15 +45,6 @@ export default function Home() {
     setResults(null);
     setAssetJobs([]);
     resetFilters();
-    // Fetch risk score for the selected asset
-    if (a) {
-      fetch(`${API_BASE}/assets/${a.id}/risk`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data: AssetRisk | null) => setRisk(data))
-        .catch(() => setRisk(null));
-    } else {
-      setRisk(null);
-    }
   }
 
   function selectAssetById(assetId: number) {
@@ -274,22 +263,14 @@ export default function Home() {
                 />
               )}
 
-              {/* Risk summary */}
-              <RiskSummary
-                findings={results?.findings || []}
-                risk={risk}
-                assetValue={asset.value}
-              />
-
-              {/* Scan history */}
-              <ScanHistory
+              {/* Asset dashboard (tool cards + risk + related assets) */}
+              <AssetDashboard
                 apiBase={API_BASE}
                 asset={asset}
-                onSelectJob={selectPastJob}
                 refreshKey={historyRefresh}
-                activeJobId={job?.id}
-                onJobsLoaded={setAssetJobs}
+                onSelectJob={selectPastJob}
                 onJumpToAsset={jumpToAsset}
+                onJobsLoaded={setAssetJobs}
               />
 
               {/* ── Scan detail panel (when a job is selected) ──────── */}
@@ -316,7 +297,7 @@ export default function Home() {
                 />
               )}
 
-              {job && ["theharvester", "subfinder", "amass", "merklemap"].includes(job.tool) && job.status === "completed" && (
+              {job && ["theharvester", "subfinder", "amass", "merklemap", "certspotter"].includes(job.tool) && job.status === "completed" && (
                 <SuggestHostsPanel
                   apiBase={API_BASE}
                   jobId={job.id}

@@ -227,3 +227,5 @@ node_modules/
 /scan_output/
 /lab/inventory.yml
 CLAUDE.md
+context.md
+pre.md

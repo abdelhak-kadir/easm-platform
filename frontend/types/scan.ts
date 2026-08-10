@@ -151,3 +151,36 @@ export interface AssetDiffResponse {
   asset_id: number;
   diffs: DiffEntry[];
 }
+
+// GET /assets/{asset_id}/dashboard
+export interface DashboardToolSummary {
+  tool: string;
+  applicable: boolean;
+  latest_job: ScanJob | null;
+  latest_status: string | null;
+  job_count: number;
+  finding_count: number;
+  severities: Record<Severity, number>;
+  last_completed_at: string | null;
+}
+
+export interface RelatedAssetGroup {
+  asset: Asset;
+  relation: "child" | "parent" | "both";
+  links: ScanJob[];
+  scans: ScanJob[];
+  summary: {
+    latest_status: string | null;
+    finding_count: number;
+    severities: Record<Severity, number>;
+  };
+}
+
+export interface AssetDashboardResponse {
+  asset: Asset;
+  scans: ScanJob[];
+  related_assets: RelatedAssetGroup[];
+  tool_summary: DashboardToolSummary[];
+  risk: AssetRisk | null;
+  generated_at: string;
+}
