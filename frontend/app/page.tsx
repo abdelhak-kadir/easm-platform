@@ -311,7 +311,7 @@ export default function Home() {
                 />
               )}
 
-              {job && ["theharvester", "subfinder", "amass", "merklemap", "certspotter"].includes(job.tool) && job.status === "completed" && (
+              {job && ["theharvester", "subfinder", "amass", "merklemap", "certspotter", "sublist3r", "dnsdumpster", "publicwww", "cloudscraper", "csprecon", "waymore", "subover", "passivedns"].includes(job.tool) && job.status === "completed" && (
                 <SuggestHostsPanel
                   apiBase={API_BASE}
                   jobId={job.id}

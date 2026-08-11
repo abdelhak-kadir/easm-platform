@@ -44,3 +44,11 @@ RUN pip install --no-cache-dir -r base.txt
 
 # holehe — email account presence checker (100+ services)
 RUN pip install --no-cache-dir holehe
+
+# Sublist3r — passive subdomain enumeration via search-engine scraping
+# (Google, Yahoo, Bing, Baidu, Ask, VirusTotal, Netcraft, DNSdumpster,
+# ThreatCrowd). Bruteforce module (subbrute) is present on disk but never
+# invoked — scan.py passes enable_bruteforce=False.
+RUN git clone --depth 1 https://github.com/aboul3la/Sublist3r.git /opt/sublist3r \
+    && cd /opt/sublist3r \
+    && pip install --no-cache-dir -r requirements.txt

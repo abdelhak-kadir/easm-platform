@@ -59,6 +59,14 @@ class ToolName(enum.StrEnum):
     HOLEHE = "holehe"
     SSL_CHECKER = "ssl_checker"
     CERTSPOTTER = "certspotter"
+    SUBLIST3R = "sublist3r"
+    DNSDUMPSTER = "dnsdumpster"
+    PUBLICWWW = "publicwww"
+    PASSIVEDNS = "passivedns"
+    CLOUDSCRAPER = "cloudscraper"
+    CSPRECON = "csprecon"
+    WAYMORE = "waymore"
+    SUBOVER = "subover"
 
 
 class Severity(enum.StrEnum):
