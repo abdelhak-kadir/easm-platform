@@ -75,6 +75,8 @@ class ToolSpec:
     run: Callable[[str], dict]
     parse: Callable[[dict], list[dict]]
     asset_types: frozenset[AssetType]
+    # dns, domain, certificate, subdomain, web, network, cloud, smtp, ssl, search, takeover
+    category: str = "other"
 
     # Chaining (all optional -- a tool that doesn't chain leaves these None):
     spawns: ToolName | None = None
@@ -140,6 +142,7 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=shodan_scan.run,
         parse=shodan_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        category="search",
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
@@ -149,6 +152,7 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=censys_scan.run,
         parse=censys_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        category="search",
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
@@ -158,6 +162,7 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=whois_scan.run,
         parse=whois_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="domain",
         spawns=ToolName.SHODAN,
         spawn_asset_type=AssetType.IP,
         resolve_spawn_value=_resolve_domain_to_ip,
@@ -167,6 +172,7 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=reverse_dns_scan.run,
         parse=reverse_dns_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        category="dns",
         spawns=ToolName.WHOIS,
         spawn_asset_type=AssetType.DOMAIN,
         resolve_spawn_value=_resolve_ip_to_domain,
@@ -176,108 +182,126 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         run=theharvester_scan.run,
         parse=theharvester_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.EMAIL_SECURITY: ToolSpec(
         tool=ToolName.EMAIL_SECURITY,
         run=email_security_scan.run,
         parse=email_security_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="dns",
     ),
     ToolName.SUBFINDER: ToolSpec(
         tool=ToolName.SUBFINDER,
         run=subfinder_scan.run,
         parse=subfinder_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.AMASS: ToolSpec(
         tool=ToolName.AMASS,
         run=amass_scan.run,
         parse=amass_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.MERKLEMAP: ToolSpec(
         tool=ToolName.MERKLEMAP,
         run=merklemap_scan.run,
         parse=merklemap_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="certificate",
     ),
     ToolName.HTTPX: ToolSpec(
         tool=ToolName.HTTPX,
         run=httpx_scan.run,
         parse=httpx_parse.parse,
         asset_types=frozenset({AssetType.SUBDOMAIN, AssetType.IP}),
+        category="web",
     ),
     ToolName.NMAP: ToolSpec(
         tool=ToolName.NMAP,
         run=nmap_scan.run,
         parse=nmap_parse.parse,
         asset_types=frozenset({AssetType.IP}),
+        category="network",
     ),
     ToolName.PASSIVEDNS: ToolSpec(
         tool=ToolName.PASSIVEDNS,
         run=passivedns_scan.run,
         parse=passivedns_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.HOLEHE: ToolSpec(
         tool=ToolName.HOLEHE,
         run=holehe_scan.run,
         parse=holehe_parse.parse,
         asset_types=frozenset({AssetType.EMAIL}),
+        category="smtp",
     ),
     ToolName.CERTSPOTTER: ToolSpec(
         tool=ToolName.CERTSPOTTER,
         run=certspotter_scan.run,
         parse=certspotter_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="certificate",
     ),
     ToolName.SSL_CHECKER: ToolSpec(
         tool=ToolName.SSL_CHECKER,
         run=ssl_checker_scan.run,
         parse=ssl_checker_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="ssl",
     ),
     ToolName.SUBLIST3R: ToolSpec(
         tool=ToolName.SUBLIST3R,
         run=sublist3r_scan.run,
         parse=sublist3r_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.DNSDUMPSTER: ToolSpec(
         tool=ToolName.DNSDUMPSTER,
         run=dnsdumpster_scan.run,
         parse=dnsdumpster_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="dns",
     ),
     ToolName.PUBLICWWW: ToolSpec(
         tool=ToolName.PUBLICWWW,
         run=publicwww_scan.run,
         parse=publicwww_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="web",
     ),
     ToolName.CLOUDSCRAPER: ToolSpec(
         tool=ToolName.CLOUDSCRAPER,
         run=cloudscraper_scan.run,
         parse=cloudscraper_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="cloud",
     ),
     ToolName.CSPRECON: ToolSpec(
         tool=ToolName.CSPRECON,
         run=csprecon_scan.run,
         parse=csprecon_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="web",
     ),
     ToolName.WAYMORE: ToolSpec(
         tool=ToolName.WAYMORE,
         run=waymore_scan.run,
         parse=waymore_parse.parse,
         asset_types=frozenset({AssetType.DOMAIN, AssetType.SUBDOMAIN}),
+        category="subdomain",
     ),
     ToolName.SUBOVER: ToolSpec(
         tool=ToolName.SUBOVER,
         run=subover_scan.run,
         parse=subover_parse.parse,
         asset_types=frozenset({AssetType.SUBDOMAIN}),
+        category="takeover",
     ),
 }
 
