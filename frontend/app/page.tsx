@@ -13,6 +13,7 @@ import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 import DiscoveryProgress from "../components/DiscoveryProgress";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { ToastContainer, showToast } from "../components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
@@ -179,7 +180,8 @@ export default function Home() {
   }, [results, activeSeverities, activeType, search]);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--canvas)" }}>
+    <ErrorBoundary>
+      <div className="min-h-screen flex flex-col" style={{ background: "var(--canvas)" }}>
       <ToastContainer />
       <TopNav
         activeScanCount={activeScanCount}
@@ -280,5 +282,6 @@ export default function Home() {
         </main>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

@@ -27,7 +27,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite+pysqlite:///:memory:"
           REDIS_URL: "redis://localhost:6379/0"
-        run: pytest --cov=backend -v --timeout=60 --maxfail=5
+        run: pytest --cov=backend --cov-report=term --cov-report=html -v --timeout=60 --maxfail=5
 
   docker-build:
     runs-on: ubuntu-latest

@@ -1,8 +1,11 @@
 import ipaddress
+import logging
 import subprocess
 import xml.etree.ElementTree as ET
 
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
+
+_logger = logging.getLogger(__name__)
 
 _NMAP_BIN = "nmap"
 _NMAP_TIMEOUT_S = 120
@@ -41,6 +44,10 @@ def run(asset_value: str) -> dict:
     # -sV           = service version detection
     # --top-ports N = only scan the N most common ports (fast)
     cmd = [_NMAP_BIN, "-sT", "-sV", "--top-ports", "100", "-oX", "-", ip]
+    stdout = ""
+    stderr = ""
+    timed_out = False
+
     try:
         proc = subprocess.run(
             cmd,
@@ -48,20 +55,35 @@ def run(asset_value: str) -> dict:
             text=True,
             timeout=_NMAP_TIMEOUT_S,
         )
+        stdout = proc.stdout or ""
+        stderr = (proc.stderr or "").strip()
     except FileNotFoundError:
         raise NmapScanError("nmap binary not found — install nmap in the container image") from None
-    except subprocess.TimeoutExpired:
-        raise NmapRateLimitError(f"nmap scan timed out after {_NMAP_TIMEOUT_S}s for {ip}") from None
+    except subprocess.TimeoutExpired as e:
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "").strip() if isinstance(e.stderr, str) else ""
+        timed_out = True
+        _logger.info(
+            "nmap timed out after %ds for %s — parsing partial XML output (%d bytes)",
+            _NMAP_TIMEOUT_S,
+            ip,
+            len(stdout),
+        )
 
-    if proc.returncode != 0:
-        stderr = proc.stderr.strip() if proc.stderr else ""
+    if not timed_out and proc.returncode != 0:
         raise NmapScanError(
             f"nmap exited with code {proc.returncode} for {ip}" + (f": {stderr}" if stderr else "")
         )
 
     try:
-        return _parse_nmap_xml(proc.stdout.strip())
+        result = _parse_nmap_xml(stdout.strip())
+        return result
     except NmapNoDataError:
+        if timed_out:
+            raise NmapRateLimitError(
+                f"nmap timed out after {_NMAP_TIMEOUT_S}s for {ip} "
+                f"with no open ports in partial output"
+            ) from None
         raise
     except Exception as e:
         raise NmapScanError(f"Failed to parse nmap XML output for {ip}: {e}") from e

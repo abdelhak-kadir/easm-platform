@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from datetime import UTC, datetime
 
 import redis
@@ -210,7 +211,11 @@ def run_tool_scan(self, job_id: int):
             raw_data = spec.run(asset.value)
         except ToolRateLimitError as e:
             should_chain = False  # will retry — chain on the final outcome instead
-            raise self.retry(exc=e) from e
+            # Jitter: ±15s of random spread prevents all workers from
+            # retrying simultaneously after a rate-limit storm, which
+            # would cause an immediate second wave of 429s.
+            countdown = 30 + random.randint(0, 15)
+            raise self.retry(exc=e, countdown=countdown) from e
         except ToolNoDataError as e:
             job.status = ScanStatus.COMPLETED
             job.error_message = str(e)[:1000]

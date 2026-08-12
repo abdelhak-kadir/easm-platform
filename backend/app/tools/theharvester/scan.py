@@ -81,9 +81,11 @@ def _run_theharvester_cli(domain: str) -> dict | None:
             )
         except subprocess.TimeoutExpired:
             _logger.warning(
-                "theHarvester CLI timed out after %ds for %s", _HARVESTER_TIMEOUT_S, domain
+                "theHarvester CLI timed out after %ds for %s — "
+                "attempting to read partial output",
+                _HARVESTER_TIMEOUT_S,
+                domain,
             )
-            return None
         except subprocess.CalledProcessError as e:
             _logger.warning("theHarvester CLI exited %d for %s: %s", e.returncode, domain, e.stderr)
             return None

@@ -30,6 +30,10 @@ def run(asset_value: str) -> dict:
     """
     target = asset_value.strip().lower().rstrip(".")
 
+    stdout = ""
+    stderr = ""
+    timed_out = False
+
     try:
         proc = subprocess.run(
             [
@@ -55,8 +59,18 @@ def run(asset_value: str) -> dict:
             text=True,
             check=True,
         )
+        stdout = proc.stdout or ""
+        stderr = _to_str(proc.stderr)
     except subprocess.TimeoutExpired as e:
-        raise HttpxScanError(f"httpx timed out after {_HTTPX_TIMEOUT_S}s for {target}") from e
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "").strip() if isinstance(e.stderr, str) else ""
+        timed_out = True
+        _logger.info(
+            "httpx timed out after %ds for %s — parsing partial output (%d bytes)",
+            _HTTPX_TIMEOUT_S,
+            target,
+            len(stdout),
+        )
     except subprocess.CalledProcessError as e:
         # httpx exits non-zero when no live host is found — that's
         # a clean "no data" outcome, not a failure.
@@ -76,7 +90,7 @@ def run(asset_value: str) -> dict:
     # httpx -json emits one JSON object per line (JSONL) when there are
     # multiple results (e.g. http + https redirect chains).
     responses: list[dict] = []
-    for line in proc.stdout.splitlines():
+    for line in stdout.splitlines():
         line = line.strip()
         if not line:
             continue
@@ -86,6 +100,10 @@ def run(asset_value: str) -> dict:
             _logger.debug("httpx: skipping non-JSON output line for %s: %.120s", target, line)
 
     if not responses:
+        if timed_out:
+            raise HttpxScanError(
+                f"httpx timed out after {_HTTPX_TIMEOUT_S}s for {target} " f"with no partial output"
+            )
         raise HttpxNoDataError(f"No HTTP(S) service found for {target}")
 
     return {

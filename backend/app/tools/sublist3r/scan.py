@@ -50,6 +50,10 @@ def run(asset_value: str) -> dict:
 
     _logger.info("Sublist3r starting for %s — engines: %s (bruteforce disabled)", domain, _SOURCES)
 
+    stdout = ""
+    stderr = ""
+    timed_out = False
+
     try:
         proc = subprocess.run(
             [
@@ -66,16 +70,25 @@ def run(asset_value: str) -> dict:
             capture_output=True,
             text=True,
         )
+        stdout = proc.stdout or ""
+        stderr = (proc.stderr or "").strip()
     except subprocess.TimeoutExpired as e:
-        msg = f"Sublist3r timed out after {_TIMEOUT_S}s for {domain}"
-        raise Sublist3rRateLimitError(msg) from e
+        stdout = (e.stdout or "") if isinstance(e.stdout, str) else ""
+        stderr = (e.stderr or "").strip() if isinstance(e.stderr, str) else ""
+        timed_out = True
+        _logger.info(
+            "Sublist3r timed out after %ds for %s — parsing partial output (%d bytes)",
+            _TIMEOUT_S,
+            domain,
+            len(stdout),
+        )
     except FileNotFoundError as e:
         raise Sublist3rScanError(f"Sublist3r script not found at {_SUBLIST3R_SCRIPT}") from e
     except OSError as e:
         raise Sublist3rScanError(f"Sublist3r OS error: {e}") from e
 
     # Parse subdomains from stdout — one per line after header lines
-    stdout = (proc.stdout or "").strip()
+    stdout = stdout.strip()
     hosts: set[str] = set()
 
     for line in stdout.splitlines():
@@ -90,12 +103,20 @@ def run(asset_value: str) -> dict:
             hosts.add(line)
 
     if not hosts:
-        stderr = (proc.stderr or "").strip()
-        detail = f": {stderr[:200]}" if stderr else ""
+        detail = ""
+        if stderr:
+            detail = f": {stderr[:200]}"
+        if timed_out:
+            detail = f" (timed out after {_TIMEOUT_S}s, no subdomains in partial output){detail}"
         raise Sublist3rNoDataError(f"No subdomains found for {domain} via search engines{detail}")
 
     hosts_list = sorted(hosts)
-    _logger.info("Sublist3r found %d subdomain(s) for %s", len(hosts_list), domain)
+    _logger.info(
+        "Sublist3r found %d subdomain(s) for %s%s",
+        len(hosts_list),
+        domain,
+        " (partial output after timeout)" if timed_out else "",
+    )
 
     return {
         "domain": domain,
