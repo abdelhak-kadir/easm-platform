@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import TopNav from "../components/TopNav";
 import Sidebar from "../components/Sidebar";
-import AssetDashboard from "../components/AssetDashboard";
+import DiscoveryDashboard from "../components/DiscoveryDashboard";
+import PreReport from "../components/PreReport";
 import ScanDetailPanel from "../components/ScanDetailPanel";
 import FleetDashboard from "../components/FleetDashboard";
 import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
@@ -12,6 +13,7 @@ import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
 import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
 import DiscoveryProgress from "../components/DiscoveryProgress";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { ToastContainer, showToast } from "../components/Toast";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE as string;
@@ -178,7 +180,8 @@ export default function Home() {
   }, [results, activeSeverities, activeType, search]);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--canvas)" }}>
+    <ErrorBoundary>
+      <div className="min-h-screen flex flex-col" style={{ background: "var(--canvas)" }}>
       <ToastContainer />
       <TopNav
         activeScanCount={activeScanCount}
@@ -214,78 +217,30 @@ export default function Home() {
             />
           ) : (
             /* ── Asset selected ── */
-            <div className="max-w-4xl mx-auto">
-              {/* Back navigation */}
-              <button
-                onClick={() => selectAsset(null)}
-                className="flex items-center gap-1.5 text-xs font-semibold mb-4 px-3 py-1.5 rounded-full transition-all hover:opacity-80"
-                style={{
-                  color: "var(--brand-accent)",
-                  background: "var(--brand-dim)",
-                  border: "1px solid var(--brand-accent)",
-                }}
-              >
-                <span>←</span> Tableau de bord
-              </button>
-
-              {/* Asset header + scan / discovery buttons */}
-              <div
-                className="panel flex items-center justify-between px-5 py-4 mb-5"
-                style={busy ? { position: "relative", overflow: "hidden" } : undefined}
-              >
-                {busy && <div className="scan-sweep" style={{ position: "absolute", inset: 0 }} />}
-                <div className="relative z-10">
-                  <p className="eyebrow mb-1">Cible sélectionnée</p>
-                  <p className="mono text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                    {asset.value}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                    {busy
-                      ? "Analyse en cours — les résultats apparaîtront automatiquement."
-                      : "Analyse rapide sur cet asset, ou découverte par vagues pour explorer récursivement."}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 relative z-10">
-                  <button
-                    onClick={triggerScan}
-                    disabled={busy}
-                    className="btn-primary text-sm"
-                  >
-                    {scanning ? "Analyse en cours…" : "Analyse rapide"}
-                  </button>
-                  <button
-                    onClick={triggerDiscovery}
-                    disabled={busy}
-                    className="btn-primary text-sm"
-                    style={{
-                      background: "var(--brand-dim)",
-                      borderColor: "var(--brand-accent)",
-                      color: "var(--brand-accent)",
-                    }}
-                  >
-                    {discovering ? "…" : "Découverte"}
-                  </button>
-                </div>
-              </div>
-
-              {/* Discovery progress (wave orchestrator) */}
-              {asset.discovery_run_id != null && (
-                <DiscoveryProgress
-                  apiBase={API_BASE}
-                  runId={asset.discovery_run_id}
-                  onRefreshAssets={refreshAssets}
-                />
-              )}
-
-              {/* Asset dashboard (tool cards + risk + related assets) */}
-              <AssetDashboard
+            <div className="max-w-5xl mx-auto">
+              {/* Discovery Dashboard */}
+              <DiscoveryDashboard
                 apiBase={API_BASE}
                 asset={asset}
                 refreshKey={historyRefresh}
                 onSelectJob={selectPastJob}
                 onJumpToAsset={jumpToAsset}
                 onJobsLoaded={setAssetJobs}
+                onBackToDashboard={() => selectAsset(null)}
               />
+
+              {/* PreReport — shown when scan completes */}
+              {job && results && (
+                <div className="mt-4" ref={findingsRef}>
+                  <PreReport
+                    asset={asset}
+                    risk={null}
+                    findings={results.findings}
+                    toolSummary={[]}  // filled by DiscoveryDashboard
+                    scanJobs={assetJobs}
+                  />
+                </div>
+              )}
 
               {/* ── Scan detail panel (when a job is selected) ──────── */}
               {job && (
@@ -311,7 +266,7 @@ export default function Home() {
                 />
               )}
 
-              {job && ["theharvester", "subfinder", "amass", "merklemap", "certspotter"].includes(job.tool) && job.status === "completed" && (
+              {job && ["theharvester", "subfinder", "amass", "merklemap", "certspotter", "sublist3r", "dnsdumpster", "publicwww", "cloudscraper", "csprecon", "waymore", "subover", "passivedns"].includes(job.tool) && job.status === "completed" && (
                 <SuggestHostsPanel
                   apiBase={API_BASE}
                   jobId={job.id}
@@ -327,5 +282,6 @@ export default function Home() {
         </main>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

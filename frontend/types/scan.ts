@@ -155,6 +155,7 @@ export interface AssetDiffResponse {
 // GET /assets/{asset_id}/dashboard
 export interface DashboardToolSummary {
   tool: string;
+  category: string;
   applicable: boolean;
   latest_job: ScanJob | null;
   latest_status: string | null;

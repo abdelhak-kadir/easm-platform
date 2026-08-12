@@ -26,6 +26,11 @@ _logger = logging.getLogger(__name__)
 # email_security DNS timeouts), so the window must generously exceed that.
 _COLLECT_MAX_RETRIES = 30
 
+# Process assets in batches to avoid holding hundreds of rows in memory
+# during a single DB transaction.  Each batch is committed independently
+# and its Celery tasks dispatched before moving to the next batch.
+_SCHEDULE_BATCH_SIZE = 50
+
 
 # ── public API (called from routers) ──────────────────────────────────
 
@@ -93,7 +98,6 @@ def schedule_round(run_id: int) -> dict:
     duplicate never rolls back the entire round's work.
     """
     db = SessionLocal()
-    job_ids_to_dispatch: list[int] = []
     try:
         # SELECT ... FOR UPDATE serializes concurrent schedule_round
         # calls, preventing phantom round_number increments when two
@@ -141,78 +145,95 @@ def schedule_round(run_id: int) -> dict:
             db.commit()
             return {"status": "completed", "reason": "no pending or running assets"}
 
-        asset_ids: list[int] = []
-        for asset in pending:
-            asset.status = AssetStatus.RUNNING
-            db.flush()
-            asset_ids.append(asset.id)
+        # ── Lazy import — avoids circular dependency at module level ──
+        from app.tasks import run_tool_scan
 
-            for spec in tools_for_asset_type(asset.asset_type):
-                existing = (
-                    db.query(ScanJob)
-                    .filter(
-                        ScanJob.asset_id == asset.id,
-                        ScanJob.tool == spec.tool,
-                        ScanJob.status.in_(_EXISTING_JOB_STATUSES),
+        all_asset_ids: list[int] = []
+        total_jobs = 0
+
+        # Process pending assets in batches to bound memory usage.
+        # Each batch is committed independently and its Celery tasks
+        # dispatched before moving to the next batch.
+        for batch_start in range(0, len(pending), _SCHEDULE_BATCH_SIZE):
+            batch = pending[batch_start : batch_start + _SCHEDULE_BATCH_SIZE]
+            batch_job_ids: list[int] = []
+
+            for asset in batch:
+                asset.status = AssetStatus.RUNNING
+                db.flush()
+                all_asset_ids.append(asset.id)
+
+                for spec in tools_for_asset_type(asset.asset_type):
+                    existing = (
+                        db.query(ScanJob)
+                        .filter(
+                            ScanJob.asset_id == asset.id,
+                            ScanJob.tool == spec.tool,
+                            ScanJob.status.in_(_EXISTING_JOB_STATUSES),
+                        )
+                        .first()
                     )
-                    .first()
-                )
-                if existing is not None:
-                    continue  # already tracked — skip
+                    if existing is not None:
+                        continue  # already tracked — skip
 
-                job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
-                db.add(job)
-                # Savepoint: if a concurrent schedule_round already inserted
-                # this (asset, tool) pair, only *this* insert rolls back —
-                # the rest of the round is untouched.
-                try:
-                    with db.begin_nested():
-                        db.flush()
-                except IntegrityError:
-                    _logger.debug(
-                        "schedule_round run_id=%d — duplicate (asset=%d, tool=%s), skipped",
-                        run_id,
-                        asset.id,
-                        spec.tool,
-                    )
-                    db.rollback()  # roll back the savepoint only
-                    continue
+                    job = ScanJob(asset_id=asset.id, tool=spec.tool, status=ScanStatus.PENDING)
+                    db.add(job)
+                    # Savepoint: if a concurrent schedule_round already inserted
+                    # this (asset, tool) pair, only *this* insert rolls back —
+                    # the rest of the batch is untouched.
+                    try:
+                        with db.begin_nested():
+                            db.flush()
+                    except IntegrityError:
+                        _logger.debug(
+                            "schedule_round run_id=%d — duplicate (asset=%d, tool=%s), skipped",
+                            run_id,
+                            asset.id,
+                            spec.tool,
+                        )
+                        db.rollback()  # roll back the savepoint only
+                        continue
 
-                db.refresh(job)
-                job_ids_to_dispatch.append(job.id)
+                    db.refresh(job)
+                    batch_job_ids.append(job.id)
 
-        run.round_number += 1
-        run.current_round_asset_ids = asset_ids
-        db.commit()
+            # Commit this batch BEFORE dispatching — workers never see uncommitted rows.
+            # Flush current_round_asset_ids incrementally so a crash mid-batch
+            # leaves the run in a recoverable state (partial progress recorded).
+            run.current_round_asset_ids = all_asset_ids
+            db.commit()
 
-        # ── dispatch AFTER commit — workers never see uncommitted rows ──
-        if job_ids_to_dispatch:
-            # Lazy import — avoids circular dependency at module level
-            from app.tasks import run_tool_scan
-
-            for job_id in job_ids_to_dispatch:
+            # Dispatch this batch's jobs
+            for job_id in batch_job_ids:
                 try:
                     run_tool_scan.delay(job_id)
                 except Exception:
                     _logger.warning(
-                        "schedule_round run_id=%d — failed to dispatch job %d "
+                        "schedule_round run_id=%d batch %d-%d — failed to dispatch job %d "
                         "(Redis unavailable?). Job will be reaped by periodic sweep.",
                         run_id,
+                        batch_start,
+                        batch_start + len(batch),
                         job_id,
                     )
+
+            total_jobs += len(batch_job_ids)
+
+        run.round_number += 1
+        db.commit()
 
         _logger.info(
             "Round %d scheduled — %d asset(s), %d job(s), run_id=%d",
             run.round_number,
-            len(asset_ids),
-            len(job_ids_to_dispatch),
+            len(all_asset_ids),
+            total_jobs,
             run_id,
         )
         return {
             "status": "scheduled",
             "round": run.round_number,
-            "asset_count": len(asset_ids),
-            "job_count": len(job_ids_to_dispatch),
+            "asset_count": len(all_asset_ids),
+            "job_count": total_jobs,
         }
     except Exception:
         _logger.exception("schedule_round run_id=%d failed", run_id)

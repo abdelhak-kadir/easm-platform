@@ -346,6 +346,13 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
         )
         latest = tool_jobs[0] if tool_jobs else None
         applicable_flag = tool in {spec.tool for spec in applicable}
+        tool_category = ""
+        try:
+            from app.tools.registry import get_tool_spec
+
+            tool_category = get_tool_spec(tool).category
+        except (ValueError, ImportError):
+            pass
 
         if latest:
             # Only count findings from this tool's latest result
@@ -362,6 +369,7 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
             tool_summary.append(
                 {
                     "tool": tool,
+                    "category": tool_category,
                     "applicable": applicable_flag,
                     "latest_job": _serialize_job(db, latest),
                     "latest_status": latest.status,
@@ -379,6 +387,7 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
             tool_summary.append(
                 {
                     "tool": tool,
+                    "category": tool_category,
                     "applicable": applicable_flag,
                     "latest_job": None,
                     "latest_status": None,

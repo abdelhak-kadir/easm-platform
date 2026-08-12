@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from datetime import UTC, datetime
 
 import redis
@@ -114,52 +115,52 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
         else:
             db.refresh(spawned_asset)
 
-    # Check for existing spawn job — any status (PENDING, RUNNING,
-    # COMPLETED, FAILED) means this asset+tool pair has already been
-    # handled or is currently being handled.  FAILED jobs from earlier
-    # rounds are still skipped; the wave orchestrator never re-spawns
-    # the same pair.
-    existing_job = (
-        db.query(ScanJob)
-        .filter(
-            ScanJob.asset_id == spawned_asset.id,
-            ScanJob.tool == spec.spawns,
-        )
-        .first()
-    )
-    if existing_job is not None:
-        # Link the existing job to this parent for traceability, but
-        # don't queue a duplicate.
-        job.spawned_asset_id = spawned_asset.id
-        job.spawned_job_id = existing_job.id
-        db.commit()
-        return
+    # Queue ALL applicable tools for the spawned asset, not just one.
+    # This ensures a discovered IP gets Shodan + Censys + Nmap + Reverse DNS + HTTPX,
+    # and a discovered domain gets the full tool suite.
+    from app.tools.registry import tools_for_asset_type
 
-    # No existing job — create one and link it
-    spawned_job = ScanJob(asset_id=spawned_asset.id, tool=spec.spawns, status=ScanStatus.PENDING)
-    db.add(spawned_job)
-    try:
-        db.flush()
-    except IntegrityError:
-        # Another worker raced us to create this job (unique constraint on
-        # asset_id+tool). Re-query and link to the winner.
-        db.rollback()
-        spawned_job = (
+    spawned_tools = tools_for_asset_type(spawned_asset.asset_type)
+    first_spawned_job_id: int | None = None
+    to_dispatch: list[int] = []
+
+    for spawned_spec in spawned_tools:
+        existing_job = (
             db.query(ScanJob)
-            .filter(
-                ScanJob.asset_id == spawned_asset.id,
-                ScanJob.tool == spec.spawns,
-            )
+            .filter(ScanJob.asset_id == spawned_asset.id, ScanJob.tool == spawned_spec.tool)
             .first()
         )
-        if spawned_job is None:
-            raise  # should never happen
+        if existing_job is not None:
+            if first_spawned_job_id is None:
+                first_spawned_job_id = existing_job.id
+            continue
+
+        spawned_job = ScanJob(
+            asset_id=spawned_asset.id, tool=spawned_spec.tool, status=ScanStatus.PENDING
+        )
+        db.add(spawned_job)
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            spawned_job = (
+                db.query(ScanJob)
+                .filter(ScanJob.asset_id == spawned_asset.id, ScanJob.tool == spawned_spec.tool)
+                .first()
+            )
+            if spawned_job is None:
+                continue
+        if first_spawned_job_id is None:
+            first_spawned_job_id = spawned_job.id
+        to_dispatch.append(spawned_job.id)
 
     job.spawned_asset_id = spawned_asset.id
-    job.spawned_job_id = spawned_job.id
+    job.spawned_job_id = first_spawned_job_id
     db.commit()
 
-    run_tool_scan.delay(spawned_job.id)
+    # Dispatch Celery tasks AFTER commit — prevents "ScanJob X not found" race
+    for jid in to_dispatch:
+        run_tool_scan.delay(jid)
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -210,7 +211,11 @@ def run_tool_scan(self, job_id: int):
             raw_data = spec.run(asset.value)
         except ToolRateLimitError as e:
             should_chain = False  # will retry — chain on the final outcome instead
-            raise self.retry(exc=e) from e
+            # Jitter: ±15s of random spread prevents all workers from
+            # retrying simultaneously after a rate-limit storm, which
+            # would cause an immediate second wave of 429s.
+            countdown = 30 + random.randint(0, 15)
+            raise self.retry(exc=e, countdown=countdown) from e
         except ToolNoDataError as e:
             job.status = ScanStatus.COMPLETED
             job.error_message = str(e)[:1000]

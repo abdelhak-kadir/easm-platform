@@ -20,7 +20,7 @@ _EMPTY_PAGE: list = []
 def _mock_response(status=200, json_data=None):
     resp = mock.MagicMock(spec=requests.Response)
     resp.status_code = status
-    resp.json.return_value = json_data or _ISSUANCES
+    resp.json.return_value = json_data if json_data is not None else _ISSUANCES
     return resp
 
 
@@ -46,10 +46,14 @@ def test_run_paginates():
     page2 = [_ISSUANCES[1]]
     with mock.patch(
         "requests.get",
-        side_effect=[_mock_response(json_data=page1), _mock_response(json_data=page2)],
+        side_effect=[
+            _mock_response(json_data=page1),
+            _mock_response(json_data=page2),
+            _mock_response(json_data=[]),  # empty → stop pagination
+        ],
     ) as get:
         data = run("example.com")
-    assert get.call_count == 2
+    assert get.call_count == 3
     assert "www.example.com" in data["hosts"]
     assert "mail.example.com" in data["hosts"]
 

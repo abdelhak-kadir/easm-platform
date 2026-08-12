@@ -1,5 +1,6 @@
 ruff
-black
+black==24.10.0
 pytest
 pytest-cov
+pytest-timeout
 pre-commit

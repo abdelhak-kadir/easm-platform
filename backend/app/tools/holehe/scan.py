@@ -1,10 +1,13 @@
 import csv
 import glob
+import logging
 import re
 import subprocess
 import tempfile
 
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
+
+_logger = logging.getLogger(__name__)
 
 _HOLEHE_TIMEOUT_S = 90
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -42,6 +45,7 @@ def run(asset_value: str) -> dict:
         raise HoleheScanError(f"'{email}' is not a valid email address")
 
     with tempfile.TemporaryDirectory() as tmp:
+        timed_out = False
         try:
             subprocess.run(
                 ["holehe", email, "-C"],
@@ -51,10 +55,13 @@ def run(asset_value: str) -> dict:
                 text=True,
                 check=True,
             )
-        except subprocess.TimeoutExpired as e:
-            raise HoleheRateLimitError(
-                f"holehe timed out after {_HOLEHE_TIMEOUT_S}s for {email}"
-            ) from e
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _logger.info(
+                "holehe timed out after %ds for %s — attempting to parse partial CSV",
+                _HOLEHE_TIMEOUT_S,
+                email,
+            )
         except subprocess.CalledProcessError as e:
             stderr = (e.stderr or "").strip()
             detail = f": {stderr}" if stderr else ""
@@ -68,6 +75,11 @@ def run(asset_value: str) -> dict:
 
         csv_files = glob.glob(f"{tmp}/holehe_*_results.csv")
         if not csv_files:
+            if timed_out:
+                raise HoleheRateLimitError(
+                    f"holehe timed out after {_HOLEHE_TIMEOUT_S}s for {email} "
+                    f"with no partial CSV output"
+                )
             raise HoleheNoDataError(f"No holehe results produced for {email}")
 
         rows = _read_csv(csv_files[0])

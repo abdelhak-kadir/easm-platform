@@ -1,5 +1,8 @@
 # EASM Platform
 
+[![CI](https://github.com/elysec/easm-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/elysec/easm-platform/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+
 **External Attack Surface Management** — plateforme open-source de découverte et de surveillance continue des surfaces d'attaque exposées sur Internet.
 
 ## Pourquoi ?
@@ -48,3 +51,19 @@ cd frontend && npm run dev
 ```
 
 La documentation complète est dans [`CLAUDE.md`](CLAUDE.md).
+
+## Développement
+
+```bash
+# Backend — tests + lint
+cd backend && source ../.venv/bin/activate
+pytest --cov=backend --cov-report=term   # couverture du backend
+ruff check . && black --check --diff .   # lint + format
+
+# Frontend
+cd frontend && npm run dev
+```
+
+La couverture est mesurée dans la CI à chaque PR — le statut du workflow
+[CI](https://github.com/elysec/easm-platform/actions/workflows/ci.yml)
+donne l'état de la branche `main`.

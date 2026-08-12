@@ -13,6 +13,7 @@ import { timeAgo, formatElapsed } from "../lib/time";
 import StatusBadge from "./StatusBadge";
 import Skeleton from "./Skeleton";
 import TopologyMap from "./TopologyMap";
+import ToolCategoryGroup from "./ToolCategoryGroup";
 
 const ASSET_TYPE_LABEL: Record<string, string> = {
   domain: "Domaine",
@@ -204,21 +205,24 @@ export default function AssetDashboard({
         </div>
       )}
 
-      {/* ── Tool cards grid ──────────────────────────────────────────── */}
-      <div>
-        <p className="eyebrow mb-3">Outils ({tool_summary.length})</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {tool_summary.map((ts) => (
-            <ToolCard
-              key={ts.tool}
-              summary={ts}
-              onSelectJob={onSelectJob}
-              onCancel={cancelJob}
-              onRun={runSingleTool}
-            />
-          ))}
-        </div>
-      </div>
+      {/* ── Tools grouped by category ───────────────────────────────── */}
+      {(() => {
+        const grouped: Record<string, DashboardToolSummary[]> = {};
+        for (const ts of tool_summary) {
+          const cat = ts.category || "other";
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(ts);
+        }
+        return Object.entries(grouped).map(([cat, tools]) => (
+          <ToolCategoryGroup
+            key={cat}
+            category={cat}
+            tools={tools}
+            onSelectJob={onSelectJob}
+            onRunTool={runSingleTool}
+          />
+        ));
+      })()}
 
       {/* ── Related assets detail ───────────────────────────────────── */}
       {related_assets.map((rel) => (
