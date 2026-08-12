@@ -49,7 +49,6 @@ export default function PreReport({ asset, risk, findings, toolSummary, scanJobs
           <p className="text-sm font-bold" style={{ color: "var(--text-on-dark)", fontFamily: "var(--font-manrope)" }}>Résumé Exécutif</p>
           <p className="text-[10px] uppercase tracking-[0.06em]" style={{ color: "var(--text-on-dark-soft)" }}>External Attack Surface Management</p>
         </div>
-        <button onClick={() => window.print()} className="btn-outline-light text-xs">Imprimer</button>
       </div>
 
       <div className="p-6 space-y-5">

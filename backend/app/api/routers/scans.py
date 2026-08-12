@@ -683,6 +683,13 @@ _DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
         ToolName.AMASS,
         ToolName.MERKLEMAP,
         ToolName.CERTSPOTTER,
+        ToolName.SUBLIST3R,
+        ToolName.DNSDUMPSTER,
+        ToolName.PUBLICWWW,
+        ToolName.CLOUDSCRAPER,
+        ToolName.CSPRECON,
+        ToolName.WAYMORE,
+        ToolName.PASSIVEDNS,
     }
 )
 
