@@ -690,6 +690,7 @@ _DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
         ToolName.CSPRECON,
         ToolName.WAYMORE,
         ToolName.PASSIVEDNS,
+        ToolName.SHODAN,
     }
 )
 

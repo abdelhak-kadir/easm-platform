@@ -3,12 +3,24 @@ import logging
 import subprocess
 import xml.etree.ElementTree as ET
 
+import dns.resolver
+import dns.reversename
+
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
 
 _logger = logging.getLogger(__name__)
 
 _NMAP_BIN = "nmap"
-_NMAP_TIMEOUT_S = 120
+_NMAP_TIMEOUT_S = 300
+_TOP_PORTS = "500"
+_HOST_TIMEOUT_S = "240s"
+
+# NSE scripts that enrich the port scan for ASM purposes:
+# - vulners       → known CVEs with CVSS for each detected service
+# - http-title    → page title behind the port
+# - ssl-cert      → certificate CN + SANs presented on the port
+# - ssl-enum-ciphers / tls-alpn → TLS configuration of the port
+_NMAP_SCRIPTS = "vulners,http-title,ssl-cert,ssl-enum-ciphers,tls-alpn"
 
 
 class NmapScanError(ToolScanError):
@@ -24,13 +36,19 @@ class NmapNoDataError(NmapScanError, ToolNoDataError):
 
 
 def run(asset_value: str) -> dict:
-    """Run an nmap TCP connect scan with service detection against an IP.
+    """Run an nmap TCP connect scan with service/OS detection and NSE
+    scripts against an IP.
 
-    Scans the top 100 most common ports (``--top-ports 100``) with TCP
-    connect (``-sT`` — no raw sockets needed) and service version
-    detection (``-sV``). Typical scan time: 20–40 seconds.
+    Scans the top 500 most common ports (``--top-ports 500``) with TCP
+    connect (``-sT`` — no raw sockets needed), service version detection
+    (``-sV``), default scripts (``-sC``), OS fingerprinting (``-O``), and
+    the vulners/http-title/ssl-cert/ssl-enum-ciphers/tls-alpn NSE scripts.
+    ``--host-timeout`` caps the run even on heavily filtered hosts
+    (Cloudflare edge answers nothing on filtered ports); the partial XML
+    is parsed on timeout instead of being discarded.
 
-    Returns a dict with ``ip``, ``hostnames``, ``os``, and ``ports`` keys
+    Returns a dict with ``ip``, ``hostnames``, ``os``, ``ports`` (each
+    carrying CPE + per-port script output) and ``host_scripts`` keys
     suitable for :func:`app.tools.nmap.parse.parse`.
     """
     ip = asset_value.strip()
@@ -42,8 +60,36 @@ def run(asset_value: str) -> dict:
 
     # -sT           = TCP connect scan (no raw sockets, works without root)
     # -sV           = service version detection
-    # --top-ports N = only scan the N most common ports (fast)
-    cmd = [_NMAP_BIN, "-sT", "-sV", "--top-ports", "100", "-oX", "-", ip]
+    # -sC           = default NSE scripts (http-title, ssl-cert, …)
+    # -O            = OS fingerprinting (best-effort without raw sockets)
+    # --top-ports N = only scan the N most common ports
+    # --host-timeout = hard cap per host — filtered targets still yield partial XML
+    cmd = [
+        _NMAP_BIN,
+        "-sT",
+        "-sV",
+        "-sC",
+        "-O",
+        "--osscan-guess",
+        "-T4",
+        "--top-ports",
+        _TOP_PORTS,
+        "--host-timeout",
+        _HOST_TIMEOUT_S,
+        "--script",
+        _NMAP_SCRIPTS,
+    ]
+
+    # SNI-strict hosts (Cloudflare edge, most CDNs) refuse TLS handshakes
+    # that don't carry a known hostname, which silences every ssl-* script.
+    # When the IP has a PTR record, use it as the SNI name so ssl-cert /
+    # ssl-enum-ciphers can still report. Best-effort — no PTR, no SNI,
+    # and the other scripts (http-title, …) still run.
+    sni_name = _resolve_sni_hostname(ip)
+    if sni_name:
+        cmd += ["--script-args", f"tls.servername={sni_name}"]
+
+    cmd += ["-oX", "-", ip]
     stdout = ""
     stderr = ""
     timed_out = False
@@ -89,9 +135,33 @@ def run(asset_value: str) -> dict:
         raise NmapScanError(f"Failed to parse nmap XML output for {ip}: {e}") from e
 
 
+def _resolve_sni_hostname(ip: str) -> str | None:
+    """Best-effort PTR hostname for *ip*, to use as the TLS SNI name.
+
+    Mirrors the resolver fallback chain of the reverse_dns tool: system
+    resolver first, then public resolvers. Returns None on any failure —
+    the scan proceeds without an SNI name.
+    """
+    try:
+        query_name = dns.reversename.from_address(ip)
+        for nameserver in (None, "1.1.1.1", "8.8.8.8"):
+            resolver = dns.resolver.Resolver()
+            resolver.timeout = 3
+            resolver.lifetime = 5
+            if nameserver:
+                resolver.nameservers = [nameserver]
+            try:
+                answer = resolver.resolve(query_name, "PTR")
+                return str(answer[0].target).rstrip(".")
+            except dns.exception.DNSException:
+                continue
+    except Exception:
+        pass
+    return None
+
+
 def _parse_nmap_xml(xml_string: str) -> dict:
     """Parse nmap ``-sT -sV --top-ports`` XML output into a structured dict.
-
     Raises ``NmapNoDataError`` when the host is down or has no open ports.
     """
     root = ET.fromstring(xml_string)
@@ -116,11 +186,13 @@ def _parse_nmap_xml(xml_string: str) -> dict:
                 hostnames.append(name)
 
     os_name: str | None = None
+    os_accuracy: str | None = None
     os_elem = host_elem.find("os")
     if os_elem is not None:
         osmatch = os_elem.find("osmatch")
         if osmatch is not None:
             os_name = osmatch.get("name")
+            os_accuracy = osmatch.get("accuracy")
 
     ports: list[dict] = []
     ports_elem = host_elem.find("ports")
@@ -130,6 +202,16 @@ def _parse_nmap_xml(xml_string: str) -> dict:
             if state is None or state.get("state") != "open":
                 continue
             service = port_elem.find("service")
+            cpe = None
+            if service is not None:
+                cpe_elem = service.find("cpe")
+                if cpe_elem is not None and cpe_elem.text:
+                    cpe = cpe_elem.text
+            scripts = {}
+            for script_elem in port_elem.findall("script"):
+                output = script_elem.get("output") or ""
+                if output:
+                    scripts[script_elem.get("id", "")] = output
             ports.append(
                 {
                     "port": int(port_elem.get("portid", 0)),
@@ -139,8 +221,18 @@ def _parse_nmap_xml(xml_string: str) -> dict:
                     "product": service.get("product", "") if service is not None else "",
                     "version": service.get("version", "") if service is not None else "",
                     "extrainfo": service.get("extrainfo", "") if service is not None else "",
+                    "cpe": cpe,
+                    "scripts": scripts,
                 }
             )
+
+    host_scripts: dict[str, str] = {}
+    hostscript_elem = host_elem.find("hostscript")
+    if hostscript_elem is not None:
+        for script_elem in hostscript_elem.findall("script"):
+            output = script_elem.get("output") or ""
+            if output:
+                host_scripts[script_elem.get("id", "")] = output
 
     if not ports:
         raise NmapNoDataError(f"No open ports found for {ip}")
@@ -149,5 +241,7 @@ def _parse_nmap_xml(xml_string: str) -> dict:
         "ip": ip,
         "hostnames": hostnames,
         "os": os_name,
+        "os_accuracy": os_accuracy,
         "ports": ports,
+        "host_scripts": host_scripts,
     }

@@ -42,12 +42,12 @@ const ASSET_TYPE_LABEL: Record<string, string> = {
 };
 
 const ASSET_EMOJI: Record<string, string> = {
-  domain: "🌐",
-  subdomain: "🔗",
-  ip: "🖥",
-  email: "📧",
-  service: "⚡",
-  technology: "📊",
+  domain: "",
+  subdomain: "",
+  ip: "",
+  email: "",
+  service: "",
+  technology: "",
 };
 
 /* ── Props ───────────────────────────────────────────────────────── */

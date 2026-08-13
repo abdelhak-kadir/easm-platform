@@ -23,6 +23,13 @@ _logger = logging.getLogger(__name__)
 _DNS_TIMEOUT = 10  # seconds per query
 _RECORD_TYPES = ("A", "AAAA", "MX", "NS", "TXT", "SOA", "CNAME")
 
+# Public resolvers tried after the system resolver fails. Docker's
+# embedded DNS (127.0.0.11) can answer SERVFAIL for the whole container
+# while the host network is fine — the fallback chain keeps enumeration
+# working in that case.
+_FALLBACK_RESOLVERS = ("1.1.1.1", "8.8.8.8")
+_RETRY_ATTEMPTS = 2
+
 
 class DNSDumpsterScanError(ToolScanError):
     """Raised when DNS enumeration fails."""
@@ -64,8 +71,10 @@ def run(asset_value: str) -> dict:
             try:
                 results = future.result()
                 records[rtype.lower()] = results
+            except DNSDumpsterNoDataError as e:
+                errors.append((rtype, e))
             except Exception as e:
-                errors.append(f"{rtype}: {e}")
+                errors.append((rtype, e))
 
     # Also try a zone transfer — rare but high value
     try:
@@ -93,11 +102,19 @@ def run(asset_value: str) -> dict:
         "sources_used": ["dnsdumpster"],
     }
 
-    # Warn if everything failed — surface as no-data, not a hard failure.
-    # DNS resolvers inside containers often can't reach authoritative NS.
-    if errors and len(errors) == len(_RECORD_TYPES):
-        _logger.warning("All DNS queries failed for %s: %s", domain, errors)
-        raise DNSDumpsterNoDataError(f"No DNS records resolvable for {domain}")
+    # Everything failed: distinguish "the domain has no records" from
+    # "our resolvers couldn't be reached". The latter is transient —
+    # raise retryable so Celery re-attempts instead of storing an empty
+    # result permanently.
+    if len(errors) == len(_RECORD_TYPES):
+        msgs = "; ".join(f"{rt}: {e}" for rt, e in errors)
+        if any(isinstance(e, DNSDumpsterNoDataError) for _, e in errors):
+            raise DNSDumpsterNoDataError(f"No DNS records found for {domain}: {msgs}")
+        _logger.warning("All DNS queries failed for %s: %s", domain, msgs)
+        raise DNSDumpsterRateLimitError(
+            f"DNS resolution failed for all record types for {domain} — "
+            f"transient resolver problem: {msgs}"
+        )
 
     if not hosts and not ips and not records.get("mx") and not records.get("ns"):
         raise DNSDumpsterNoDataError(f"No DNS records found for {domain}")
@@ -117,10 +134,34 @@ def run(asset_value: str) -> dict:
 
 
 def _query_dns(domain: str, rtype: str) -> list[dict]:
-    """Query one record type and return a list of parsed dictionaries."""
+    """Query one record type, retrying once and falling back to public
+    resolvers when the system resolver fails.
+
+    NXDOMAIN is authoritative (the domain itself doesn't exist) — no
+    resolver will disagree, so it re-raises immediately.
+    """
+    last_error: Exception | None = None
+    for _attempt in range(_RETRY_ATTEMPTS):
+        for nameserver in (None, *_FALLBACK_RESOLVERS):
+            try:
+                return _query_dns_once(domain, rtype, nameserver)
+            except DNSDumpsterNoDataError:
+                raise
+            except (DNSDumpsterRateLimitError, DNSDumpsterScanError) as e:
+                last_error = e
+
+    if last_error is not None:
+        raise last_error
+    return []
+
+
+def _query_dns_once(domain: str, rtype: str, nameserver: str | None) -> list[dict]:
+    """Single resolver attempt — one record type, one nameserver."""
     resolver = dns.resolver.Resolver()
     resolver.timeout = _DNS_TIMEOUT
     resolver.lifetime = _DNS_TIMEOUT
+    if nameserver:
+        resolver.nameservers = [nameserver]
 
     try:
         answers = resolver.resolve(domain, rtype)
@@ -135,9 +176,17 @@ def _query_dns(domain: str, rtype: str) -> list[dict]:
     except Exception as e:
         raise DNSDumpsterScanError(f"DNS query failed for {domain} ({rtype}): {e}") from e
 
+    # dnspython ≥2.8 iterates Answer over rdata objects (no .ttl on the
+    # elements); older versions iterate RRsets. Grab the TTL from the
+    # Answer itself so both work.
+    ttl = getattr(answers, "ttl", None)
+    if ttl is None:
+        rrset = getattr(answers, "rrset", None)
+        ttl = rrset.ttl if rrset is not None else None
+
     results: list[dict] = []
     for answer in answers:
-        item = {"type": rtype, "ttl": answer.ttl}
+        item = {"type": rtype, "ttl": ttl}
         raw = str(answer)
 
         if rtype in ("A", "AAAA"):

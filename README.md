@@ -3,15 +3,15 @@
 [![CI](https://github.com/elysec/easm-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/elysec/easm-platform/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 
-**External Attack Surface Management** — plateforme open-source de découverte et de surveillance continue des surfaces d'attaque exposées sur Internet.
+**External Attack Surface Management** : plateforme open-source de découverte et de surveillance continue des surfaces d'attaque exposées sur Internet.
 
 ## Pourquoi ?
 
-Les organisations déploient en permanence de nouveaux services, domaines et adresses IP sans toujours en garder la trace. Chaque actif oublié — un serveur mal configuré, un port ouvert, un sous-domaine non surveillé — est une porte d'entrée potentielle. L'EASM Platform automatise cette veille : elle cartographie l'empreinte Internet d'une organisation, la réanalyse régulièrement et détecte les changements suspects avant qu'ils ne deviennent des incidents.
+Les organisations déploient en permanence de nouveaux services, domaines et adresses IP sans toujours en garder la trace. Chaque actif oublié  un serveur mal configuré, un port ouvert, un sous-domaine non surveillé — est une porte d'entrée potentielle. L'EASM Platform automatise cette veille : elle cartographie l'empreinte Internet d'une organisation, la réanalyse régulièrement et détecte les changements suspects avant qu'ils ne deviennent des incidents.
 
 ## Comment ?
 
-La plateforme fonctionne par **vagues de découverte itératives** : à partir d'un domaine racine, elle énumère les sous-domaines, résout les adresses IP, sonde les services exposés et rebondit sur chaque nouvelle cible découverte — le tout orchestré automatiquement jusqu'à épuisement de la surface visible.
+La plateforme fonctionne par **vagues de découverte itératives** : à partir d'un domaine racine, elle énumère les sous-domaines, résout les adresses IP, sonde les services exposés et rebondit sur chaque nouvelle cible découverte  le tout orchestré automatiquement jusqu'à épuisement de la surface visible.
 
 ### Outils intégrés
 
@@ -50,12 +50,10 @@ docker compose up -d
 cd frontend && npm run dev
 ```
 
-La documentation complète est dans [`CLAUDE.md`](CLAUDE.md).
-
 ## Développement
 
 ```bash
-# Backend — tests + lint
+# Backend + tests + lint
 cd backend && source ../.venv/bin/activate
 pytest --cov=backend --cov-report=term   # couverture du backend
 ruff check . && black --check --diff .   # lint + format
@@ -63,7 +61,3 @@ ruff check . && black --check --diff .   # lint + format
 # Frontend
 cd frontend && npm run dev
 ```
-
-La couverture est mesurée dans la CI à chaque PR — le statut du workflow
-[CI](https://github.com/elysec/easm-platform/actions/workflows/ci.yml)
-donne l'état de la branche `main`.

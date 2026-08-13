@@ -4,6 +4,7 @@ import logging
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import requests
@@ -19,12 +20,18 @@ _logger = logging.getLogger(__name__)
 _CRTSH_URL = "https://crt.sh/?q=%25.{domain}&output=json"
 _CRTSH_TIMEOUT_S = 30
 
+# crt.sh goes down (502/504) or rate-limits fairly often. Retry a few
+# times with backoff before giving up — most outages last seconds, not
+# minutes, and this avoids burning a Celery-level retry for nothing.
+_CRTSH_MAX_ATTEMPTS = 3
+_CRTSH_RETRY_DELAYS_S = (2, 5)
+
 # theHarvester CLI — complementary source, run via subprocess for isolation.
-# Sources chosen to avoid API-key requirements (no hunter.io, securitytrails,
-# etc.). DuckDuckGo and Bing are HTML scrapers and may be slow or rate-limited;
-# the timeout is the safety rail.
+# API-based sources only: duckduckgo and bing are HTML scrapers that are
+# slow, break when upstream changes, and regularly push the whole CLI run
+# past the 90s timeout. The API sources finish in seconds.
 _HARVESTER_TIMEOUT_S = 90
-_HARVESTER_SOURCES = "crtsh,duckduckgo,bing,otx,threatminer,hackertarget,rapiddns"
+_HARVESTER_SOURCES = "crtsh,otx,threatminer,hackertarget,rapiddns"
 
 # DNS-based extraction: A/AAAA records for each discovered hostname.
 # Disabled by default (adds latency proportional to host count) but
@@ -204,30 +211,71 @@ def _query_crtsh(
     """Fetch cert transparency entries from crt.sh and extract hostnames,
     IPs, and email addresses from the name_value / common_name fields."""
     url = _CRTSH_URL.format(domain=domain)
-    try:
-        resp = requests.get(url, timeout=_CRTSH_TIMEOUT_S)
-        resp.raise_for_status()
-    except requests.Timeout:
-        raise TheHarvesterRateLimitError(
-            f"CRT.sh request timed out after {_CRTSH_TIMEOUT_S}s for {domain}"
-        ) from None
-    except requests.HTTPError as e:
-        status = e.response.status_code if e.response is not None else 0
-        if status == 404:
-            # crt.sh returns bare 404 (not an empty JSON array) when a
-            # domain has no certificates in the transparency log — that's
-            # a legitimate "nothing found" outcome, not a failure. Leave
-            # hosts/ips/emails empty; run()'s existing empty-result check
-            # turns that into TheHarvesterNoDataError on its own.
-            return
-        if status == 429:
-            raise TheHarvesterRateLimitError(f"CRT.sh rate-limited for {domain}") from e
-        if status >= 500:
-            # 502/503/504 are transient server errors — safe to retry
-            raise TheHarvesterRateLimitError(f"CRT.sh server error ({status}) for {domain}") from e
-        raise TheHarvesterScanError(f"CRT.sh request failed for {domain}: {e}") from e
-    except requests.RequestException as e:
-        raise TheHarvesterScanError(f"CRT.sh request failed for {domain}: {e}") from e
+    last_error: Exception | None = None
+    for attempt in range(_CRTSH_MAX_ATTEMPTS):
+        if attempt:
+            time.sleep(_CRTSH_RETRY_DELAYS_S[attempt - 1])
+        try:
+            resp = requests.get(url, timeout=_CRTSH_TIMEOUT_S)
+            resp.raise_for_status()
+        except requests.Timeout:
+            last_error = TheHarvesterRateLimitError(
+                f"CRT.sh request timed out after {_CRTSH_TIMEOUT_S}s for {domain}"
+            )
+            _logger.warning(
+                "crt.sh attempt %d/%d timed out for %s",
+                attempt + 1,
+                _CRTSH_MAX_ATTEMPTS,
+                domain,
+            )
+            continue
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if status == 404:
+                # crt.sh returns bare 404 (not an empty JSON array) when a
+                # domain has no certificates in the transparency log — that's
+                # a legitimate "nothing found" outcome, not a failure. Leave
+                # hosts/ips/emails empty; run()'s existing empty-result check
+                # turns that into TheHarvesterNoDataError on its own.
+                return
+            if status == 429:
+                last_error = TheHarvesterRateLimitError(f"CRT.sh rate-limited for {domain}")
+                _logger.warning(
+                    "crt.sh attempt %d/%d rate-limited for %s",
+                    attempt + 1,
+                    _CRTSH_MAX_ATTEMPTS,
+                    domain,
+                )
+                continue
+            if status >= 500:
+                # 502/503/504 are transient server errors — safe to retry
+                last_error = TheHarvesterRateLimitError(
+                    f"CRT.sh server error ({status}) for {domain}"
+                )
+                _logger.warning(
+                    "crt.sh attempt %d/%d got %d for %s",
+                    attempt + 1,
+                    _CRTSH_MAX_ATTEMPTS,
+                    status,
+                    domain,
+                )
+                continue
+            raise TheHarvesterScanError(f"CRT.sh request failed for {domain}: {e}") from e
+        except requests.RequestException as e:
+            last_error = TheHarvesterScanError(f"CRT.sh request failed for {domain}: {e}")
+            _logger.warning(
+                "crt.sh attempt %d/%d failed for %s: %s",
+                attempt + 1,
+                _CRTSH_MAX_ATTEMPTS,
+                domain,
+                e,
+            )
+            continue
+        break  # request succeeded — parse below
+    else:
+        # All attempts failed
+        assert last_error is not None
+        raise last_error
 
     try:
         entries: list[dict] = resp.json()

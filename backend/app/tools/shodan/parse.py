@@ -82,17 +82,36 @@ def _parse_open_port(service: dict) -> dict:
     product = service.get("product", "")
     title = f"Open port {port}/{transport}" + (f" ({product})" if product else "")
 
+    data: dict = {
+        "port": port,
+        "transport": transport,
+        "product": product,
+        "version": service.get("version", ""),
+        "banner": (service.get("data") or "")[:500],
+    }
+
+    # CPEs — the structured "what exactly is this software" signal,
+    # invaluable for risk scoring and CVE correlation downstream.
+    cpes = service.get("cpe") or []
+    if cpes:
+        data["cpe"] = cpes
+
+    # HTTP module details (server header, status, title, host).
+    http = service.get("http") or {}
+    if http.get("server"):
+        data["http_server"] = http["server"]
+    if http.get("status"):
+        data["http_status"] = http["status"]
+    if http.get("title"):
+        data["http_title"] = http["title"]
+    if http.get("host"):
+        data["http_host"] = http["host"]
+
     return {
         "finding_type": "open_port",
         "title": title,
         "severity": Severity.INFO,
-        "data": {
-            "port": port,
-            "transport": transport,
-            "product": product,
-            "version": service.get("version", ""),
-            "banner": (service.get("data") or "")[:500],
-        },
+        "data": data,
     }
 
 

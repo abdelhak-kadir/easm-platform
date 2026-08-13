@@ -234,10 +234,8 @@ export default function Home() {
                 <div className="mt-4" ref={findingsRef}>
                   <PreReport
                     asset={asset}
-                    risk={null}
                     findings={results.findings}
                     toolSummary={[]}  // filled by DiscoveryDashboard
-                    scanJobs={assetJobs}
                   />
                 </div>
               )}

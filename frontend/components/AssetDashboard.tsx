@@ -133,10 +133,6 @@ export default function AssetDashboard({
 
   // ── Risk strip ─────────────────────────────────────────────────────
 
-  const score = risk?.score ?? 0;
-  const scoreColor =
-    score >= 70 ? "var(--critical)" : score >= 40 ? "var(--high)" : "var(--success)";
-
   const totalFindings = risk?.finding_count ?? 0;
 
   return (
@@ -153,19 +149,8 @@ export default function AssetDashboard({
       {/* ── Risk strip ──────────────────────────────────────────────── */}
       {totalFindings > 0 && risk && (
         <div className="panel card-pad">
-          <p className="eyebrow mb-3">Score de risque</p>
+          <p className="eyebrow mb-3">Sévérités détectées</p>
           <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-baseline gap-2">
-              <span
-                className="text-3xl font-extrabold"
-                style={{ color: scoreColor, fontFamily: "var(--font-manrope)" }}
-              >
-                {score}
-              </span>
-              <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                / 100
-              </span>
-            </div>
             <div className="flex flex-wrap gap-1.5">
               {(["critical", "high", "medium", "low", "info"] as const).map((s) => {
                 const n = risk.breakdown[s] ?? 0;

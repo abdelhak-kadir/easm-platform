@@ -94,15 +94,20 @@ def test_run_extracts_os_detection(mock_run):
 
 
 @patch("app.tools.nmap.scan.subprocess.run")
-def test_run_uses_fast_active_scan(mock_run):
+def test_run_uses_advanced_scan_flags(mock_run):
     mock_run.return_value = _mock_proc(stdout=_nmap_xml(ports=[{"port": 80, "service": "http"}]))
 
     run("93.184.216.34")
     cmd = mock_run.call_args[0][0]
     assert "-sT" in cmd
     assert "-sV" in cmd
+    assert "-sC" in cmd
+    assert "-O" in cmd
     assert "--top-ports" in cmd
-    assert "100" in cmd
+    assert "500" in cmd
+    assert "--host-timeout" in cmd
+    assert "--script" in cmd
+    assert "vulners" in cmd
     assert "-oX" in cmd
 
 

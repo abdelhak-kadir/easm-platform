@@ -47,6 +47,12 @@ def run(asset_value: str) -> dict:
     if isinstance(host_data.get("vulns"), list):
         host_data["vulns"] = _enrich_vulns_with_cvss(host_data["vulns"])
 
+    # Normalize `hostnames` into the `hosts` key the suggest-discovered
+    # endpoint expects, so Shodan-discovered hostnames (e.g.
+    # office.iis.u-tokyo.ac.jp) flow into the human-gated acceptance UI
+    # like the other discovery tools.
+    host_data["hosts"] = host_data.get("hostnames") or []
+
     return host_data
 
 

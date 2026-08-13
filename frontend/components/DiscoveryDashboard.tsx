@@ -81,15 +81,13 @@ export default function DiscoveryDashboard({
   );
   if (!data) return null;
 
-  const { risk, tool_summary, related_assets } = data;
+  const { tool_summary, related_assets } = data;
   const total = tool_summary.length;
   const done = tool_summary.filter((t) => t.latest_status === "completed" || t.latest_status === "completed_no_data" || t.latest_status === "failed").length;
   const running = tool_summary.filter((t) => t.latest_status === "running" || t.latest_status === "pending").length;
   const failed = tool_summary.filter((t) => t.latest_status === "failed").length;
   const scanning = running > 0;
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-  const score = risk?.score ?? 0;
-  const scoreColor = score >= 70 ? "var(--critical)" : score >= 40 ? "var(--high)" : "var(--success)";
 
   return (
     <div className="space-y-4">
@@ -107,17 +105,6 @@ export default function DiscoveryDashboard({
                   style={{ color: scanning ? "var(--high)" : "var(--success)", background: scanning ? "var(--high-dim)" : "var(--success-dim)" }}>
                   {scanning ? "● En cours" : "● Terminé"}
                 </span>
-              </div>
-            </div>
-            <div style={{ position: "relative", width: 64, height: 64 }}>
-              <svg width="64" height="64" viewBox="0 0 64 64" style={{ transform: "rotate(-90deg)" }}>
-                <circle cx="32" cy="32" r="26" fill="none" stroke="var(--border)" strokeWidth="5" />
-                <circle cx="32" cy="32" r="26" fill="none" stroke={scoreColor} strokeWidth="5" strokeLinecap="round"
-                  strokeDasharray={163.4} strokeDashoffset={163.4 * (1 - score / 100)} style={{ transition: "stroke-dashoffset 0.6s ease" }} />
-              </svg>
-              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                <span className="text-sm font-extrabold tabular-nums" style={{ color: scoreColor, fontFamily: "var(--font-manrope)" }}>{score}</span>
-                <span className="text-[8px] uppercase" style={{ color: "var(--text-secondary)" }}>/100</span>
               </div>
             </div>
           </div>
