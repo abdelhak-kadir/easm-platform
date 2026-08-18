@@ -111,3 +111,111 @@ def test_parse_handles_missing_optional_fields():
     findings = parse(minimal)
     assert findings[0]["title"] == "Open port 443/tcp"
     assert findings[0]["data"]["product"] == ""
+
+
+# ---------------------------------------------------------------------
+# CVE fix-verdicts (detected version vs affected-version list)
+# ---------------------------------------------------------------------
+
+_APACHE_DETECTED_CPE = ["cpe:2.3:a:apache:http_server:2.4.49:*:*:*:*:*:*:*"]
+
+
+def _apache_cve(*affected_versions: str, kev: bool = False, epss: float = 0.024) -> dict:
+    """Build a CVEDB-enriched vuln dict for an Apache CVE."""
+    return {
+        "cvss": 9.8,
+        "summary": "mod_rewrite issue",
+        "cves": [f"cpe:2.3:a:apache:http_server:{v}" for v in affected_versions],
+        "kev": kev,
+        "epss": epss,
+        "epss_ranking": 0.83,
+    }
+
+
+def _parse_vuln_finding(vulns: dict, detected_cpes: list[str]) -> dict:
+    raw = {"data": [], "vulns": vulns}
+    if detected_cpes:
+        raw["data"] = [{"port": 443, "transport": "tcp", "cpe": detected_cpes}]
+    findings = parse(raw)
+    return next(f for f in findings if f["finding_type"] == "vulnerability")
+
+
+def test_vulnerable_when_detected_version_in_affected_list():
+    vulns = {"CVE-2024-38474": _apache_cve(*[f"2.4.{i}" for i in range(0, 60)])}
+    finding = _parse_vuln_finding(vulns, _APACHE_DETECTED_CPE)
+
+    assert finding["data"]["verdict"] == "vulnerable"
+    assert finding["data"]["detected_version"] == "2.4.49"
+    assert finding["data"]["latest_affected"] == "2.4.59"
+
+
+def test_fixed_when_detected_version_newer_than_every_affected():
+    vulns = {"CVE-2024-38474": _apache_cve(*[f"2.4.{i}" for i in range(0, 60)])}
+    finding = _parse_vuln_finding(vulns, ["cpe:2.3:a:apache:http_server:2.4.60:*:*:*:*:*:*:*"])
+
+    assert finding["data"]["verdict"] == "fixed"
+    assert finding["data"]["detected_version"] == "2.4.60"
+    assert finding["data"]["latest_affected"] == "2.4.59"
+
+
+def test_unknown_when_detected_version_in_list_gap():
+    # The enumerated list skips 2.4.5 — never claim safe on membership alone.
+    vulns = {"CVE-2024-99999": _apache_cve("2.4.0", "2.4.1", "2.4.10")}
+    finding = _parse_vuln_finding(vulns, ["cpe:2.3:a:apache:http_server:2.4.5:*:*:*:*:*:*:*"])
+
+    assert finding["data"]["verdict"] == "unknown"
+
+
+def test_wildcard_affected_version_is_vulnerable():
+    vulns = {"CVE-2024-99998": _apache_cve("*")}
+    finding = _parse_vuln_finding(vulns, _APACHE_DETECTED_CPE)
+
+    assert finding["data"]["verdict"] == "vulnerable"
+    assert finding["data"]["detected_version"] == "2.4.49"
+
+
+def test_cpe_22_format_detected_cpes_are_parsed():
+    # Shodan service `cpe` fields are CPE 2.2 ("cpe:/a:..."), not 2.3 —
+    # the verdict must survive that difference.
+    vulns = {"CVE-2024-38474": _apache_cve(*[f"2.4.{i}" for i in range(0, 60)])}
+    finding = _parse_vuln_finding(vulns, ["cpe:/a:apache:http_server:2.4.49"])
+
+    assert finding["data"]["verdict"] == "vulnerable"
+    assert finding["data"]["detected_version"] == "2.4.49"
+
+
+def test_no_verdict_when_affected_product_not_detected():
+    vulns = {"CVE-2024-38474": _apache_cve("2.4.59")}
+    finding = _parse_vuln_finding(vulns, ["cpe:2.3:a:nginx:nginx:1.18.0:*:*:*:*:*:*:*"])
+
+    assert "verdict" not in finding["data"]
+
+
+def test_no_verdict_when_no_cpes_detected_on_host():
+    vulns = {"CVE-2024-38474": _apache_cve("2.4.59")}
+    finding = _parse_vuln_finding(vulns, [])
+
+    assert "verdict" not in finding["data"]
+
+
+def test_kev_epss_and_references_stored_in_finding():
+    vulns = {
+        "CVE-2021-41773": {
+            "cvss": 9.8,
+            "summary": "Path traversal",
+            "cves": ["cpe:2.3:a:apache:http_server:2.4.49"],
+            "kev": True,
+            "epss": 0.97,
+            "epss_ranking": 0.999,
+            "published_time": "2021-10-05",
+            "references": ["https://httpd.apache.org/security/vulnerabilities_24.html"],
+        }
+    }
+    finding = _parse_vuln_finding(vulns, _APACHE_DETECTED_CPE)
+
+    assert finding["data"]["kev"] is True
+    assert finding["data"]["epss"] == 0.97
+    assert finding["data"]["epss_ranking"] == 0.999
+    assert finding["data"]["published_time"] == "2021-10-05"
+    assert finding["data"]["references"][0].startswith("https://")
+    assert finding["data"]["verdict"] == "vulnerable"

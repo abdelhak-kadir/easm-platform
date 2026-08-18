@@ -45,6 +45,7 @@ function Chip({ value, copy }: { value: string; copy?: boolean }) {
 
 function ExplanationBlock({ finding }: { finding: Finding }) {
   const text = explainFinding(finding);
+  if (!text) return null;
   return (
     <p
       className="text-[13px] leading-relaxed mb-3 px-3 py-2.5 rounded-md"
@@ -147,11 +148,72 @@ function OpenPortBody({ data }: Record<string, any>) {
   );
 }
 
+const VERDICT_META: Record<string, { label: string; color: string; bg: string }> = {
+  vulnerable: { label: "❌ Vulnérable", color: "var(--critical)", bg: "var(--critical-dim)" },
+  fixed: { label: "✅ Corrigé", color: "var(--success)", bg: "var(--success-dim)" },
+  unknown: { label: "⚠️ À vérifier", color: "var(--high)", bg: "var(--high-dim)" },
+};
+
 function VulnerabilityBody({ data }: Record<string, any>) {
   const cvss = data.cvss ?? 0;
   const color = cvss >= 9 ? "var(--critical)" : cvss >= 7 ? "var(--high)" : "var(--text-primary)";
+  const verdictMeta = data.verdict ? VERDICT_META[data.verdict] : null;
   return (
     <div className="space-y-1.5">
+      {/* Fix verdict + KEV chips */}
+      {(verdictMeta || data.kev) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {verdictMeta && (
+            <span
+              className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md"
+              style={{
+                color: verdictMeta.color,
+                background: verdictMeta.bg,
+                border: `1px solid ${verdictMeta.color}`,
+              }}
+            >
+              {verdictMeta.label}
+            </span>
+          )}
+          {data.kev && (
+            <span
+              className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md"
+              style={{
+                color: "var(--critical)",
+                background: "var(--critical-dim)",
+                border: "1px solid var(--critical)",
+              }}
+            >
+              🔥 Exploité activement (CISA)
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Verdict detail line */}
+      {data.verdict && (
+        <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+          {data.verdict === "vulnerable" ? (
+            <>
+              Version détectée <span className="mono">{data.detected_version}</span> affectée
+              {data.latest_affected && (
+                <> — corriger vers une version &gt; {data.latest_affected}</>
+              )}
+            </>
+          ) : data.verdict === "fixed" ? (
+            <>
+              Version détectée <span className="mono">{data.detected_version}</span> corrigée
+              {data.latest_affected && <> (dernière affectée : {data.latest_affected})</>}
+            </>
+          ) : (
+            <>
+              Version détectée <span className="mono">{data.detected_version}</span> hors de la
+              liste des versions affectées — à vérifier
+            </>
+          )}
+        </p>
+      )}
+
       <Field label="CVSS">
         <span className="text-lg font-extrabold" style={{ color, fontFamily: "var(--font-manrope)" }}>
           {cvss}
@@ -160,6 +222,17 @@ function VulnerabilityBody({ data }: Record<string, any>) {
           / 10
         </span>
       </Field>
+      {typeof data.epss === "number" && data.epss > 0 && (
+        <Field label="EPSS">
+          {(data.epss * 100).toFixed(1)} %
+          {typeof data.epss_ranking === "number" && data.epss_ranking > 0 && (
+            <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+              {" "}
+              · percentile {Math.round(data.epss_ranking * 100)}
+            </span>
+          )}
+        </Field>
+      )}
       {data.summary && (
         <div className="flex items-start gap-2 text-sm">
           <span
@@ -379,6 +452,104 @@ function DiscoveredAssetsBody({ data }: Record<string, any>) {
   );
 }
 
+function IpReputationBody({ data }: Record<string, any>) {
+  // `rbl_listed_count` is the new name; fall back to the old `listed_count`
+  // for scan results stored before the rename.
+  const rblCount = data.rbl_listed_count ?? data.listed_count ?? 0;
+  return (
+    <div className="space-y-1.5">
+      <Field label="IP">
+        {data.ip}
+        {data.ip && <CopyButton value={data.ip} />}
+      </Field>
+      <Field label="Zones vérifiées">{data.zones_checked ?? 0}</Field>
+      <Field label="Blacklists RBL">
+        <span style={{ color: rblCount > 0 ? "var(--critical)" : "var(--success)" }}>
+          {rblCount > 0 ? `${rblCount} liste${rblCount > 1 ? "s" : ""}` : "aucune"}
+        </span>
+      </Field>
+      {typeof data.abuseipdb_score === "number" && (
+        <Field label="Signalé AbuseIPDB">
+          <span
+            style={{
+              color: data.abuseipdb_reported ? "var(--critical)" : "var(--success)",
+            }}
+          >
+            {data.abuseipdb_reported
+              ? `oui — score ${data.abuseipdb_score}/100`
+              : "non"}
+          </span>
+        </Field>
+      )}
+      {typeof data.tor_exit === "boolean" && (
+        <Field label="Exit Tor">
+          <span style={{ color: data.tor_exit ? "var(--high)" : "var(--text-primary)" }}>
+            {data.tor_exit ? "oui — point de sortie Tor" : "non"}
+          </span>
+        </Field>
+      )}
+      {(data.zones_with_errors ?? 0) > 0 && (
+        <p className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
+          {data.zones_with_errors} zone(s) non vérifiée(s) (erreur DNS)
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RblListingBody({ data }: Record<string, any>) {
+  return (
+    <div className="space-y-1.5">
+      <Field label="Liste">{data.zone}</Field>
+      {data.code && (
+        <Field label="Code">
+          <span className="mono text-xs">{data.code}</span>
+        </Field>
+      )}
+      {data.reason && <Field label="Raison">{data.reason}</Field>}
+      {data.query && (
+        <Field label="Requête">
+          <span className="text-xs mono break-all">{data.query}</span>
+        </Field>
+      )}
+    </div>
+  );
+}
+
+function AbuseipdbReportBody({ data }: Record<string, any>) {
+  const score = data.score ?? 0;
+  const color = score >= 70 ? "var(--critical)" : score >= 30 ? "var(--high)" : "var(--text-primary)";
+  return (
+    <div className="space-y-1.5">
+      <Field label="Score">
+        <span className="text-lg font-extrabold" style={{ color, fontFamily: "var(--font-manrope)" }}>
+          {score}
+        </span>
+        <span className="text-xs ml-1" style={{ color: "var(--text-secondary)" }}>
+          / 100
+        </span>
+      </Field>
+      <Field label="Signalements">{data.total_reports ?? 0}</Field>
+      <Field label="Utilisateurs distincts">{data.distinct_users ?? 0}</Field>
+      {data.last_reported_at && (
+        <Field label="Dernier signalement">
+          {new Date(data.last_reported_at).toLocaleDateString("fr-FR")}
+        </Field>
+      )}
+      {data.usage_type && <Field label="Type d'usage">{data.usage_type}</Field>}
+      {data.isp && <Field label="FAI">{data.isp}</Field>}
+      {data.country_code && <Field label="Pays">{data.country_code}</Field>}
+      {typeof data.is_whitelisted === "boolean" && (
+        <Field label="Whitelisté">
+          <span style={{ color: data.is_whitelisted ? "var(--success)" : "var(--text-primary)" }}>
+            {data.is_whitelisted ? "oui" : "non"}
+          </span>
+        </Field>
+      )}
+    </div>
+  );
+}
+
 const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, any> }>> = {
   host_info: HostInfoBody,
   open_port: OpenPortBody,
@@ -391,6 +562,9 @@ const BODY_RENDERERS: Record<string, React.ComponentType<{ data: Record<string, 
   http_service: HttpServiceBody,
   email_presence: EmailPresenceBody,
   ssl_certificate: SslCertificateBody,
+  ip_reputation: IpReputationBody,
+  rbl_listing: RblListingBody,
+  abuseipdb_report: AbuseipdbReportBody,
 };
 
 /* ── FindingCard ──────────────────────────────────────────────────────── */

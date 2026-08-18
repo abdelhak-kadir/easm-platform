@@ -18,8 +18,12 @@ const SEV_COLOR: Record<string, string> = {
   info: "var(--text-secondary)",
 };
 
+const DONE_STATUSES = new Set(["completed", "completed_no_data", "failed"]);
+
 export default function PreReport({ asset, findings, toolSummary }: Props) {
-  const completedTools = toolSummary.filter((t) => t.latest_status === "completed").length;
+  // Same "done" definition as DiscoveryDashboard: a tool counts once it
+  // finished, whatever the outcome.
+  const completedTools = toolSummary.filter((t) => DONE_STATUSES.has(t.latest_status ?? "")).length;
   const totalTools = toolSummary.length;
 
   // Top findings by severity

@@ -41,6 +41,8 @@ from app.tools.holehe import parse as holehe_parse
 from app.tools.holehe import scan as holehe_scan
 from app.tools.httpx import parse as httpx_parse
 from app.tools.httpx import scan as httpx_scan
+from app.tools.ip_blacklist import parse as ip_blacklist_parse
+from app.tools.ip_blacklist import scan as ip_blacklist_scan
 from app.tools.merklemap import parse as merklemap_parse
 from app.tools.merklemap import scan as merklemap_scan
 from app.tools.nmap import parse as nmap_parse
@@ -75,7 +77,8 @@ class ToolSpec:
     run: Callable[[str], dict]
     parse: Callable[[dict], list[dict]]
     asset_types: frozenset[AssetType]
-    # dns, domain, certificate, subdomain, web, network, cloud, smtp, ssl, search, takeover
+    # categories: dns, domain, certificate, subdomain, web, network,
+    #             cloud, smtp, ssl, search, takeover, reputation
     category: str = "other"
 
     # Chaining (all optional -- a tool that doesn't chain leaves these None):
@@ -225,6 +228,13 @@ TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
         parse=nmap_parse.parse,
         asset_types=frozenset({AssetType.IP}),
         category="network",
+    ),
+    ToolName.IP_BLACKLIST: ToolSpec(
+        tool=ToolName.IP_BLACKLIST,
+        run=ip_blacklist_scan.run,
+        parse=ip_blacklist_parse.parse,
+        asset_types=frozenset({AssetType.IP}),
+        category="reputation",
     ),
     ToolName.PASSIVEDNS: ToolSpec(
         tool=ToolName.PASSIVEDNS,

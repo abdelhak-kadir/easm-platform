@@ -67,6 +67,7 @@ class ToolName(enum.StrEnum):
     CSPRECON = "csprecon"
     WAYMORE = "waymore"
     SUBOVER = "subover"
+    IP_BLACKLIST = "ip_blacklist"
 
 
 class Severity(enum.StrEnum):

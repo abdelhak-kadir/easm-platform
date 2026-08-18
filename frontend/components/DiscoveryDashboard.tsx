@@ -17,13 +17,14 @@ interface Props {
   onSelectJob: (job: ScanJob) => void;
   onJumpToAsset: (id: number) => void;
   onJobsLoaded: (jobs: ScanJob[]) => void;
+  onToolSummary: (summary: DashboardToolSummary[]) => void;
   onBackToDashboard: () => void;
 }
 
 /* ── Component ─────────────────────────────────────────────────── */
 
 export default function DiscoveryDashboard({
-  apiBase, asset, refreshKey, onSelectJob, onJumpToAsset, onJobsLoaded, onBackToDashboard,
+  apiBase, asset, refreshKey, onSelectJob, onJumpToAsset, onJobsLoaded, onToolSummary, onBackToDashboard,
 }: Props) {
   // ── ALL hooks first ──────────────────────────────────────────
   const [data, setData] = useState<AssetDashboardResponse | null>(null);
@@ -47,6 +48,9 @@ export default function DiscoveryDashboard({
 
   // Call back to parent with jobs
   useEffect(() => { if (data?.scans) onJobsLoaded(data.scans); }, [data?.scans, onJobsLoaded]);
+
+  // Call back to parent with the tool summary (PreReport's X/Y outils counter)
+  useEffect(() => { if (data?.tool_summary) onToolSummary(data.tool_summary); }, [data?.tool_summary, onToolSummary]);
 
   function runTool(tool: string) {
     fetch(`${apiBase}/scans/${tool}/${asset.id}`, { method: "POST" }).then(() => { setLoading(true); load(); });

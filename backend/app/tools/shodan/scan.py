@@ -44,8 +44,8 @@ def run(asset_value: str) -> dict:
             raise ShodanRateLimitError(f"Shodan rate limit reached for {ip}: {e}") from e
         raise ShodanScanError(f"Shodan lookup failed for {ip}: {e}") from e
 
-    if isinstance(host_data.get("vulns"), list):
-        host_data["vulns"] = _enrich_vulns_with_cvss(host_data["vulns"])
+    if isinstance(host_data.get("vulns"), list | dict):
+        host_data["vulns"] = _enrich_vulns(host_data["vulns"])
 
     # Normalize `hostnames` into the `hosts` key the suggest-discovered
     # endpoint expects, so Shodan-discovered hostnames (e.g.
@@ -71,20 +71,51 @@ def _is_ip(value: str) -> bool:
         return False
 
 
-def _enrich_vulns_with_cvss(vulns: list[str]) -> dict:
-    """When Shodan's host() response gives vulns as bare CVE ID strings
-    (lower API tier), fetch real CVSS scores from Shodan's free public
-    CVEDB so severity isn't lost to a Low-severity default."""
+def _enrich_vulns(vulns: list | dict) -> dict:
+    """Fetch the full public CVE record for every CVE ID from Shodan's free
+    CVEDB, regardless of which Shodan tier the host response came from.
+
+    Both shapes get the same treatment:
+    - bare list of CVE ID strings (lower API tier) — CVSS/summary and
+      everything else come only from CVEDB;
+    - dict of {cve_id: {cvss, summary}} (upper tier) — the tier already
+      ships cvss/summary, but the fix-verdict fields (`cpes` affected
+      versions), exploit context (`kev`, `epss`) and references only exist
+      in the CVEDB record, so it's still fetched.
+
+    Failures are best-effort: keep whatever the tier provided; the verdict
+    just won't be computed for that CVE.
+    """
+    if isinstance(vulns, list):
+        vulns = {cve_id: {} for cve_id in vulns}
+
     enriched = {}
-    for cve_id in vulns:
+    for cve_id, info in vulns.items():
+        record = {
+            "cvss": info.get("cvss") or 0.0,
+            "summary": info.get("summary", ""),
+        }
         try:
             resp = requests.get(f"https://cvedb.shodan.io/cve/{cve_id}", timeout=5)
             resp.raise_for_status()
             data = resp.json()
-            enriched[cve_id] = {
-                "cvss": data.get("cvss") or 0.0,
-                "summary": data.get("summary", ""),
-            }
+            record.update(
+                {
+                    "cves": data.get("cpes", []),
+                    "kev": bool(data.get("kev")),
+                    "epss": data.get("epss") or 0.0,
+                    "epss_ranking": data.get("ranking_epss") or 0.0,
+                    "published_time": data.get("published_time", ""),
+                    "references": data.get("references", []),
+                }
+            )
+            # Prefer CVEDB's cvss/summary when present — same record the
+            # tier data mirrors, but guaranteed complete.
+            if data.get("cvss") is not None:
+                record["cvss"] = data["cvss"]
+            if data.get("summary"):
+                record["summary"] = data["summary"]
         except requests.RequestException:
-            enriched[cve_id] = {"cvss": 0.0, "summary": ""}
+            pass  # keep tier-provided cvss/summary; no verdict for this CVE
+        enriched[cve_id] = record
     return enriched

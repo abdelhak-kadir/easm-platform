@@ -11,7 +11,7 @@ import SuggestAssetsPanel from "../components/SuggestAssetsPanel";
 import SuggestHostsPanel from "../components/SuggestHostsPanel";
 import { useAssets } from "../lib/useAssets";
 import { useFleetScans } from "../lib/useFleetScans";
-import { Asset, ScanJob, ScanResults, Severity } from "../types/scan";
+import { Asset, ScanJob, ScanResults, Severity, DashboardToolSummary } from "../types/scan";
 import DiscoveryProgress from "../components/DiscoveryProgress";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { ToastContainer, showToast } from "../components/Toast";
@@ -29,6 +29,7 @@ export default function Home() {
   const [results, setResults] = useState<ScanResults | null>(null);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [assetJobs, setAssetJobs] = useState<ScanJob[]>([]);
+  const [toolSummary, setToolSummary] = useState<DashboardToolSummary[]>([]);
 
   const [search, setSearch] = useState("");
   const [activeSeverities, setActiveSeverities] = useState<Set<Severity>>(new Set(ALL_SEVERITIES));
@@ -226,6 +227,7 @@ export default function Home() {
                 onSelectJob={selectPastJob}
                 onJumpToAsset={jumpToAsset}
                 onJobsLoaded={setAssetJobs}
+                onToolSummary={setToolSummary}
                 onBackToDashboard={() => selectAsset(null)}
               />
 
@@ -235,7 +237,7 @@ export default function Home() {
                   <PreReport
                     asset={asset}
                     findings={results.findings}
-                    toolSummary={[]}  // filled by DiscoveryDashboard
+                    toolSummary={toolSummary}
                   />
                 </div>
               )}
