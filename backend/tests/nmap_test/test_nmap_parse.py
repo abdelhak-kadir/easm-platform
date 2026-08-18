@@ -156,3 +156,78 @@ def test_ports_are_sorted():
 
 def test_all_info_severity():
     assert all(f["severity"] == Severity.INFO for f in parse(SAMPLE_SCAN))
+
+
+# ── vulnerability findings (vulners NSE output) ─────────────────────────
+
+# A realistic vulners.nse block for Apache 2.4.49: CVE lines, an
+# "*EXPLOIT*" line (still a CVE — CVSS 10), and non-CVE entries
+# (PACKETSTORM/MSF IDs) that must be ignored.
+_VULNERS_OUTPUT = (
+    " cpe:/a:apache:http_server:2.4.49:\n"
+    "  CVE-2017-15906\t5.0\thttps://vulners.com/cve/CVE-2017-15906\n"
+    "  *EXPLOIT*\tCVE-2017-15715\t10.0\thttps://vulners.com/cve/CVE-2017-15715\n"
+    "  PACKETSTORM:181114\t0.0\thttps://vulners.com/packetstorm/PACKETSTORM:181114\n"
+    "  MSF:apache-mod_negotiation-scan\t0.0\thttps://vulners.com/metasploit/MSF:apache-mod_negotiation-scan\n"
+)
+
+
+def _scan_with_vulners() -> dict:
+    # No product/version on purpose: parse() would otherwise attempt a
+    # live CVEDB lookup via _correlate_cves — these tests stay offline.
+    return {
+        "ip": "93.184.216.34",
+        "ports": [
+            {
+                "port": 80,
+                "protocol": "tcp",
+                "state": "open",
+                "service": "http",
+                "scripts": {"vulners": _VULNERS_OUTPUT},
+            }
+        ],
+    }
+
+
+def test_vulners_in_per_port_scripts_produces_vulnerability_findings():
+    # Regression: vulners.nse runs per-port, so its output lives in
+    # ports[i].scripts, not host_scripts — these findings used to
+    # silently vanish.
+    scan = _scan_with_vulners()
+    vulns = [f for f in parse(scan) if f["finding_type"] == "vulnerability"]
+    assert [f["title"] for f in vulns] == ["CVE-2017-15906", "CVE-2017-15715"]
+
+
+def test_vulners_finding_has_cvss_severity_and_summary():
+    f = next(f for f in parse(_scan_with_vulners()) if f["title"] == "CVE-2017-15906")
+    assert f["severity"] == Severity.MEDIUM
+    assert f["data"]["cvss"] == 5.0
+    assert "https://vulners.com/cve/CVE-2017-15906" in f["data"]["summary"]
+
+
+def test_vulners_exploit_line_is_critical():
+    f = next(f for f in parse(_scan_with_vulners()) if f["title"] == "CVE-2017-15715")
+    assert f["severity"] == Severity.CRITICAL
+    assert f["data"]["cvss"] == 10.0
+
+
+def test_same_cve_on_two_ports_emitted_once():
+    scan = _scan_with_vulners()
+    scan["ports"].append(
+        {
+            "port": 443,
+            "protocol": "tcp",
+            "state": "open",
+            "service": "https",
+            "scripts": {"vulners": _VULNERS_OUTPUT},
+        }
+    )
+    vulns = [f for f in parse(scan) if f["finding_type"] == "vulnerability"]
+    assert len(vulns) == 2
+
+
+def test_vulners_in_host_scripts_still_parsed():
+    scan = _scan_with_vulners()
+    scan["host_scripts"] = {"vulners": _VULNERS_OUTPUT}
+    vulns = [f for f in parse(scan) if f["finding_type"] == "vulnerability"]
+    assert len(vulns) == 2

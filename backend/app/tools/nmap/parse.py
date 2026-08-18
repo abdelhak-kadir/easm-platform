@@ -29,8 +29,14 @@ def parse(raw_data: dict) -> list[dict]:
         findings.append(_parse_port(port_info))
 
     # ── CVE correlation: vulners script first, Shodan CVEDB fallback ──
+    # vulners.nse runs per-port, so its output lives in each port's
+    # `scripts` dict; host-level scripts also count (some setups emit it
+    # at host level).
     vulners_seen: set[str] = set()
-    for output in (raw_data.get("host_scripts") or {}).values():
+    script_outputs = list((raw_data.get("host_scripts") or {}).values())
+    for port_info in raw_data.get("ports") or []:
+        script_outputs.extend((port_info.get("scripts") or {}).values())
+    for output in script_outputs:
         for cve in _parse_vulners_output(output):
             if cve["cve_id"] in vulners_seen:
                 continue
