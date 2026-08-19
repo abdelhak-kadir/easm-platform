@@ -262,8 +262,8 @@ export default function DiscoveryDashboard({
         );
       })}
 
-      {/* ── Reputation (root domains only) ─────────────────────── */}
-      {asset.asset_type === "domain" && (
+      {/* ── Reputation (IP pages only — root-domain aggregate) ─── */}
+      {asset.asset_type === "ip" && (
         <DomainReputation apiBase={apiBase} asset={asset} refreshKey={refreshKey} onJumpToAsset={onJumpToAsset} />
       )}
     </div>

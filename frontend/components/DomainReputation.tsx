@@ -20,6 +20,11 @@ export default function DomainReputation({ apiBase, asset, refreshKey, onJumpToA
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // On an IP page the block reads "Réputation IP" and shows the root
+  // domain's aggregate (the endpoint groups by root_asset_id).
+  const isIp = asset.asset_type === "ip";
+  const title = isIp ? "Réputation IP" : "Réputation du domaine";
+
   const load = useCallback(() => {
     fetch(`${apiBase}/assets/${asset.id}/reputation`)
       .then((r) => {
@@ -43,7 +48,7 @@ export default function DomainReputation({ apiBase, asset, refreshKey, onJumpToA
   if (loading && !data) {
     return (
       <div className="panel card-pad">
-        <p className="eyebrow mb-2">Réputation du domaine</p>
+        <p className="eyebrow mb-2">{title}</p>
         <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
           Chargement de la réputation…
         </p>
@@ -54,7 +59,7 @@ export default function DomainReputation({ apiBase, asset, refreshKey, onJumpToA
   if (error && !data) {
     return (
       <div className="panel card-pad" style={{ borderColor: "var(--critical)", background: "var(--critical-dim)" }}>
-        <p className="eyebrow mb-2">Réputation du domaine</p>
+        <p className="eyebrow mb-2">{title}</p>
         <p className="text-xs mb-3" style={{ color: "var(--critical)" }}>
           Erreur de chargement : {error}
         </p>
@@ -84,7 +89,7 @@ export default function DomainReputation({ apiBase, asset, refreshKey, onJumpToA
       >
         <span style={{ fontSize: "16px" }}>🛡</span>
         <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-          Réputation du domaine
+          {title}
         </span>
         <span className="mono text-[10px]" style={{ color: "var(--text-secondary)" }}>
           {data.root_asset.value}
@@ -112,7 +117,7 @@ export default function DomainReputation({ apiBase, asset, refreshKey, onJumpToA
       {/* ── Per-IP rows ────────────────────────────────────────── */}
       {ips.length === 0 ? (
         <p className="px-4 pb-4 text-xs" style={{ color: "var(--text-secondary)" }}>
-          Aucun résultat IP Blacklist pour ce domaine.
+          Aucun résultat IP Blacklist pour cet actif.
         </p>
       ) : (
         <div className="divide-y" style={{ borderColor: "var(--border)" }}>

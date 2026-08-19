@@ -6,6 +6,7 @@ import { toolLabel } from "../lib/labels";
 import StatusBadge from "./StatusBadge";
 import AssetCardGrid, { type AssetHealth } from "./AssetCardGrid";
 import ScanDataTable from "./ScanDataTable";
+import FleetTopology from "./FleetTopology";
 
 /* ── FleetJob shape ───────────────────────────────────────────────── */
 
@@ -245,6 +246,9 @@ export default function FleetDashboard({
           </div>
         ))}
       </div>
+
+      {/* ── Global topology: all assets grouped by root domain ── */}
+      <FleetTopology assets={assets} jobs={jobs} onSelectAsset={onSelectAsset} />
 
       {/* Active jobs monitor (compact) */}
       {jobs.filter((j) => j.status === "running" || j.status === "pending").length > 0 && (

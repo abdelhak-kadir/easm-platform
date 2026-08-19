@@ -38,12 +38,14 @@ function mockFetch(data: unknown, ok = true) {
   } as Response);
 }
 
-function renderPanel(overrides: { response?: AssetReputationResponse; onJumpToAsset?: jest.Mock } = {}) {
+function renderPanel(
+  overrides: { response?: AssetReputationResponse; onJumpToAsset?: jest.Mock; asset?: Asset } = {}
+) {
   const onJumpToAsset = overrides.onJumpToAsset ?? jest.fn();
   const utils = render(
     <DomainReputation
       apiBase="http://localhost:8000"
-      asset={makeAsset()}
+      asset={overrides.asset ?? makeAsset()}
       refreshKey={0}
       onJumpToAsset={onJumpToAsset}
     />
@@ -136,9 +138,23 @@ describe("DomainReputation", () => {
     mockFetch(makeResponse({ total_ips: 1, listed_ips: 0, total_zone_listings: 0 }));
 
     const { container } = renderPanel();
-    await screen.findByText("Aucun résultat IP Blacklist pour ce domaine.");
+    await screen.findByText("Aucun résultat IP Blacklist pour cet actif.");
 
     expect(container.textContent).toContain("IPs vérifiées");
+  });
+
+  it("labels the panel Réputation IP when mounted on an IP asset", async () => {
+    mockFetch(makeResponse());
+
+    const { container } = renderPanel({
+      asset: makeAsset({ asset_type: "ip", value: "93.184.216.34", root_asset_id: 1 }),
+    });
+    await screen.findByText("IPs vérifiées");
+
+    expect(container.textContent).toContain("Réputation IP");
+    expect(container.textContent).not.toContain("Réputation du domaine");
+    // The header chip still shows the root domain for context.
+    expect(container.textContent).toContain("example.com");
   });
 
   it("jumps to the IP asset when its row is clicked", async () => {
