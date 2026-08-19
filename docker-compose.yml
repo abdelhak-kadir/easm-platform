@@ -59,6 +59,12 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
+      # Nmap tuning: fleet-wide concurrency cap and per-target retries.
+      # Note: a plain `docker compose restart` does NOT re-read these —
+      # use `up -d --force-recreate celery_worker`.
+      NMAP_MAX_CONCURRENT: ${NMAP_MAX_CONCURRENT:-3}
+      NMAP_MAX_ATTEMPTS: ${NMAP_MAX_ATTEMPTS:-3}
+      NMAP_RETRY_DELAY_S: ${NMAP_RETRY_DELAY_S:-8}
     depends_on:
       postgres:
         condition: service_healthy

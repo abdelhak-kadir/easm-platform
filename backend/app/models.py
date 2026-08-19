@@ -100,6 +100,10 @@ class Asset(Base):
     discovery_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("discovery_runs.id"), nullable=True
     )
+    # Root domain this asset belongs to (self-FK).  The root domain points
+    # at itself; subdomains and spawned IPs point at the root domain.  Lets
+    # findings be grouped per root domain (e.g. reputation aggregation).
+    root_asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (
@@ -107,6 +111,9 @@ class Asset(Base):
         # Hot path: schedule_round queries PENDING assets by run,
         # get_run_status counts assets by (run, status).
         Index("ix_assets_run_status", "discovery_run_id", "status"),
+        # Grouping queries: reputation aggregation by root domain,
+        # dashboard related-assets via root linkage.
+        Index("ix_assets_root_asset", "root_asset_id"),
     )
 
     scan_jobs: Mapped[list["ScanJob"]] = relationship(
@@ -189,6 +196,10 @@ class DiscoveryRun(Base):
     max_rounds: Mapped[int] = mapped_column(Integer, default=5)
     status: Mapped[str] = mapped_column(String(20), default="running")
     current_round_asset_ids: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+    # Subdomains auto-promoted into the wave this run (budget-capped).
+    # Tracked so a single run never promotes the same host twice and the
+    # total never exceeds the per-run budget.
+    auto_promoted_hosts: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

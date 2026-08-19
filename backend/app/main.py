@@ -49,6 +49,38 @@ def on_startup():
                 "WHERE status = 'PENDING' OR status = 'RUNNING'"
             )
         )
+
+        # `Base.metadata.create_all()` never alters existing tables, so new
+        # columns added to the models are brought in with idempotent DDL
+        # (same workaround as the index above).
+        conn.execute(
+            text(
+                "ALTER TABLE assets ADD COLUMN IF NOT EXISTS "
+                "root_asset_id INTEGER REFERENCES assets(id)"
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_assets_root_asset ON assets (root_asset_id)")
+        )
+        conn.execute(
+            text("ALTER TABLE discovery_runs ADD COLUMN IF NOT EXISTS auto_promoted_hosts JSONB")
+        )
+        # Backfill: assets already linked to a run inherit the run's root;
+        # domains are their own root.  Literals are uppercase because the
+        # asset_type column is a native PG enum storing member *names*.
+        conn.execute(
+            text(
+                "UPDATE assets a SET root_asset_id = dr.root_asset_id "
+                "FROM discovery_runs dr "
+                "WHERE a.discovery_run_id = dr.id AND a.root_asset_id IS NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "UPDATE assets SET root_asset_id = id "
+                "WHERE asset_type = 'DOMAIN' AND root_asset_id IS NULL"
+            )
+        )
         conn.commit()
 
     # Warn about missing API keys so operators know which tools will be degraded.

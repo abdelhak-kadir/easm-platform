@@ -15,8 +15,17 @@ from sqlalchemy.exc import IntegrityError
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.models import Asset, AssetStatus, DiscoveryRun, RunStatus, ScanJob, ScanStatus
-from app.tools.registry import tools_for_asset_type
+from app.models import (
+    Asset,
+    AssetStatus,
+    AssetType,
+    DiscoveryRun,
+    RunStatus,
+    ScanJob,
+    ScanResult,
+    ScanStatus,
+)
+from app.tools.registry import DISCOVERY_HOST_TOOLS, tools_for_asset_type
 
 _logger = logging.getLogger(__name__)
 
@@ -30,6 +39,11 @@ _COLLECT_MAX_RETRIES = 30
 # during a single DB transaction.  Each batch is committed independently
 # and its Celery tasks dispatched before moving to the next batch.
 _SCHEDULE_BATCH_SIZE = 50
+
+# Maximum number of subdomains auto-promoted into a single DiscoveryRun
+# (total across rounds and tools).  Discovered hosts beyond this budget
+# stay in the human-gated suggest panel.
+_AUTO_PROMOTE_BUDGET = 20
 
 
 # ── public API (called from routers) ──────────────────────────────────
@@ -63,6 +77,7 @@ def create_discovery_run(db, root_asset_id: int, max_rounds: int = 5) -> Discove
     db.flush()  # get run.id
 
     root.discovery_run_id = run.id
+    root.root_asset_id = root.id  # a run's root is its own root domain
     # Leave root.status as PENDING — schedule_round picks up PENDING
     # assets and sets them to RUNNING itself.
     db.commit()
@@ -289,6 +304,29 @@ def collect_round(self, run_id: int) -> dict:
                 run_id,
                 run.round_number,
             )
+            # Crash recovery: if the collector that settled this round
+            # committed newly-created assets (spawned or auto-promoted) but
+            # crashed before dispatching schedule_round, the run would stall
+            # on this branch forever.  Poke schedule_round whenever PENDING
+            # assets exist — it is lock-serialized, so a concurrent scheduler
+            # makes the extra poke a harmless no-op.
+            if run.round_number < run.max_rounds:
+                pending_count = (
+                    db.query(Asset)
+                    .filter(
+                        Asset.discovery_run_id == run_id,
+                        Asset.status == AssetStatus.PENDING,
+                    )
+                    .count()
+                )
+                if pending_count > 0:
+                    _logger.warning(
+                        "collect_round run_id=%d — already settled but %d PENDING "
+                        "asset(s) exist; poking schedule_round (crash recovery)",
+                        run_id,
+                        pending_count,
+                    )
+                    schedule_round.delay(run_id)
             return {
                 "status": "already_settled",
                 "round": run.round_number,
@@ -389,14 +427,24 @@ def collect_round(self, run_id: int) -> dict:
         # ── collect spawned assets ──────────────────────────────────
         spawned = _collect_spawned_assets(db, run_locked)
 
-        if spawned and run_locked.round_number < run_locked.max_rounds:
+        # ── auto-promote discovered hosts into the wave ─────────────
+        # Budget-capped: up to _AUTO_PROMOTE_BUDGET new subdomains per run
+        # (deterministic, alphabetical).  Promoted assets are created
+        # PENDING + run-tagged; the next schedule_round queues their tool
+        # suite.  Only runs with a next round promote (no PENDING leftovers).
+        root = db.get(Asset, run_locked.root_asset_id)
+        promoted = _auto_promote_discovered_hosts(db, run_locked, root)
+
+        if (spawned or promoted) and run_locked.round_number < run_locked.max_rounds:
             for a in spawned:
                 a.discovery_run_id = run_locked.id
             db.commit()
             _logger.info(
-                "Round %d collected — %d new asset(s), advancing to round %d, run_id=%d",
+                "Round %d collected — %d spawned + %d auto-promoted asset(s), "
+                "advancing to round %d, run_id=%d",
                 run_locked.round_number,
                 len(spawned),
+                len(promoted),
                 run_locked.round_number + 1,
                 run_id,
             )
@@ -405,6 +453,7 @@ def collect_round(self, run_id: int) -> dict:
                 "status": "next_round",
                 "round": run_locked.round_number,
                 "new_assets": len(spawned),
+                "auto_promoted": len(promoted),
             }
 
         # ── no more rounds — finish ────────────────────────────────
@@ -476,6 +525,133 @@ def _collect_spawned_assets(db, run: DiscoveryRun) -> list[Asset]:
         )
         .all()
     )
+
+
+def _auto_promote_discovered_hosts(db, run: DiscoveryRun, root: Asset | None) -> list[Asset]:
+    """Auto-promote up to ``_AUTO_PROMOTE_BUDGET`` newly-discovered subdomains
+    into *run* — deterministic (alphabetical), budget-capped per run, tracked
+    in ``run.auto_promoted_hosts``.
+
+    Sources hosts from the current round's completed discovery-tool results
+    (``raw_data["hosts"]`` — the same field the suggest-discovered panel
+    reads).  Only hosts that are subdomains of the run's root are promoted;
+    off-root noise stays in the human-gated panel.
+
+    Promoted assets are created PENDING with the run's ``discovery_run_id``
+    and ``root_asset_id`` — ``schedule_round`` picks them up next round and
+    queues the full subdomain tool suite.
+
+    Must be called while the run row lock is held (collect_round settle path)
+    so exactly one collector runs the promotion per round.
+    """
+    if root is None or run.round_number >= run.max_rounds:
+        return []
+
+    promoted_set = set(run.auto_promoted_hosts or [])
+    remaining = _AUTO_PROMOTE_BUDGET - len(promoted_set)
+    if remaining <= 0:
+        return []
+
+    root_value = root.value.strip().lower().rstrip(".")
+
+    # Latest result per (asset, tool) for the current round.  The
+    # created_at >= run.created_at guard keeps stale pre-run results from
+    # being re-promoted on later rounds (same precedent as continue_discovery).
+    results = (
+        db.query(ScanResult)
+        .join(ScanJob)
+        .filter(
+            ScanJob.asset_id.in_(run.current_round_asset_ids or []),
+            ScanJob.tool.in_(DISCOVERY_HOST_TOOLS),
+            ScanJob.status == ScanStatus.COMPLETED,
+            ScanResult.created_at >= run.created_at,
+        )
+        .order_by(ScanResult.version.desc())
+        .all()
+    )
+
+    seen_pairs: set[tuple[int, str]] = set()
+    hosts: list[str] = []
+    for result in results:
+        key = (result.scan_job.asset_id, result.scan_job.tool)
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        hosts.extend(result.raw_data.get("hosts") or [])
+
+    if not hosts:
+        return []
+
+    candidates: list[str] = []
+    for h in hosts:
+        h = str(h).strip().lower().rstrip(".")
+        if not h or "*" in h or h == root_value:
+            continue
+        if not h.endswith("." + root_value):
+            continue  # not a subdomain of the run's root — stay human-gated
+        candidates.append(h)
+    candidates = sorted(set(candidates))
+
+    tracked = {
+        v
+        for (v,) in db.query(Asset.value)
+        .filter(Asset.asset_type == AssetType.SUBDOMAIN, Asset.value.in_(candidates))
+        .all()
+    }
+
+    promoted: list[Asset] = []
+    for h in candidates:
+        if remaining <= 0:
+            break
+        if h in promoted_set or h in tracked:
+            continue
+
+        asset = (
+            db.query(Asset)
+            .filter(Asset.value == h, Asset.asset_type == AssetType.SUBDOMAIN)
+            .first()
+        )
+        if asset is None:
+            asset = Asset(
+                value=h,
+                asset_type=AssetType.SUBDOMAIN,
+                status=AssetStatus.PENDING,
+                discovery_run_id=run.id,
+                root_asset_id=run.root_asset_id,
+            )
+            db.add(asset)
+            # Savepoint: a concurrent human accept (or another run) may have
+            # created the same host — only this insert rolls back.
+            try:
+                with db.begin_nested():
+                    db.flush()
+            except IntegrityError:
+                _logger.debug("auto-promote run_id=%d — duplicate host '%s', skipped", run.id, h)
+                db.rollback()
+                asset = (
+                    db.query(Asset)
+                    .filter(Asset.value == h, Asset.asset_type == AssetType.SUBDOMAIN)
+                    .first()
+                )
+                if asset is None:
+                    raise  # constraint guarantees existence — never happens
+                tracked.add(h)
+                continue
+        else:
+            # Already exists (created concurrently between the tracked query
+            # and now) — it's tracked, does not count against the budget,
+            # and nothing is promoted for it.
+            tracked.add(h)
+            continue
+
+        promoted.append(asset)
+        promoted_set.add(h)
+        tracked.add(h)
+        remaining -= 1
+
+    run.auto_promoted_hosts = sorted(promoted_set)
+    db.flush()  # caller commits
+    return promoted
 
 
 def get_run_status(db, run_id: int) -> dict | None:

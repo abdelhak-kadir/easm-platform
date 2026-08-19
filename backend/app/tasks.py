@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.celery_app import celery_app
 from app.database import SessionLocal
-from app.models import Asset, Finding, ScanJob, ScanResult, ScanStatus
+from app.models import Asset, AssetType, Finding, ScanJob, ScanResult, ScanStatus
 from app.tools.base import ToolNoDataError, ToolRateLimitError, ToolScanError
 from app.tools.registry import ToolSpec, get_tool_spec
 
@@ -95,10 +95,14 @@ def _spawn_chained_scan(db, job: ScanJob, asset: Asset, spec: ToolSpec) -> None:
         # so the spawn is immediately associated with the correct run.
         # This eliminates the race window where collect_round might miss
         # a late-created spawn whose parent's run already advanced.
+        # Also inherit the root domain (a DOMAIN parent is its own root)
+        # so results group per root domain (e.g. reputation aggregation).
         spawned_asset = Asset(
             value=spawn_value,
             asset_type=spec.spawn_asset_type,
             discovery_run_id=asset.discovery_run_id,
+            root_asset_id=asset.root_asset_id
+            or (asset.id if asset.asset_type == AssetType.DOMAIN else None),
         )
         db.add(spawned_asset)
         try:

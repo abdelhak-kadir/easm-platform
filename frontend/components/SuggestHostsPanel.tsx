@@ -95,7 +95,7 @@ export default function SuggestHostsPanel({ apiBase, jobId, onAssetsAccepted, di
       res = await fetch(`${apiBase}/scans/suggest-discovered/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values, asset_type: "subdomain" }),
+        body: JSON.stringify({ values, asset_type: "subdomain", job_id: jobId }),
       });
     } catch {
       setError("Impossible de contacter le serveur pendant l'acceptation.");

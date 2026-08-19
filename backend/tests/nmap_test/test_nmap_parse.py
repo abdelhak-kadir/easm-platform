@@ -104,6 +104,24 @@ def test_open_port_without_service_or_product():
     assert "port 9999" in p["title"]
 
 
+def test_open_port_tcpwrapped_still_reported():
+    # "80/tcp open tcpwrapped" is a legitimate open port — it must yield an
+    # open_port finding even though no service banner was extracted.
+    data = {
+        "ip": "10.0.0.1",
+        "ports": [
+            {"port": 80, "protocol": "tcp", "state": "open", "service": "tcpwrapped"},
+            {"port": 443, "protocol": "tcp", "state": "open", "service": "tcpwrapped"},
+        ],
+    }
+    ports = [f for f in parse(data) if f["finding_type"] == "open_port"]
+    assert len(ports) == 2
+    p80 = next(f for f in ports if f["data"]["port"] == 80)
+    assert p80["title"] == "Open port 80/tcp (tcpwrapped)"
+    assert p80["data"]["product"] == "tcpwrapped"
+    assert p80["data"]["version"] == ""
+
+
 # ── edge cases ─────────────────────────────────────────────────────────
 
 

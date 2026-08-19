@@ -22,3 +22,6 @@ class AcceptSuggestedAssets(BaseModel):
 class AcceptDiscoveredAssets(BaseModel):
     values: list[str]
     asset_type: AssetType = AssetType.SUBDOMAIN
+    # Optional — lets the backend link accepted assets to the scan job's
+    # root domain (root_asset_id).  Backward compatible: absent = unrooted.
+    job_id: int | None = None

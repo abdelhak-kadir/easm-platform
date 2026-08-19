@@ -139,6 +139,30 @@ def _extract_registrable_domain_from_hostname(hostname: str) -> str | None:
     return _to_registrable_domain(hostname)
 
 
+# Tools whose completed scans may have discovered *hosts* (subdomains)
+# listed in ``raw_data["hosts"]``.  Used by the suggest-discovered panel
+# AND the wave auto-promotion (budget-capped promotion of new subdomains
+# directly into a DiscoveryRun).  Lives here so the orchestrator doesn't
+# import a FastAPI router module from the worker side.
+DISCOVERY_HOST_TOOLS: frozenset[ToolName] = frozenset(
+    {
+        ToolName.THEHARVESTER,
+        ToolName.SUBFINDER,
+        ToolName.AMASS,
+        ToolName.MERKLEMAP,
+        ToolName.CERTSPOTTER,
+        ToolName.SUBLIST3R,
+        ToolName.DNSDUMPSTER,
+        ToolName.PUBLICWWW,
+        ToolName.CLOUDSCRAPER,
+        ToolName.CSPRECON,
+        ToolName.WAYMORE,
+        ToolName.PASSIVEDNS,
+        ToolName.SHODAN,
+    }
+)
+
+
 TOOL_REGISTRY: dict[ToolName, ToolSpec] = {
     ToolName.SHODAN: ToolSpec(
         tool=ToolName.SHODAN,

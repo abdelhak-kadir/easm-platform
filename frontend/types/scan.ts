@@ -16,6 +16,7 @@ export interface Asset {
   asset_type: string;
   status: AssetStatus;
   discovery_run_id: number | null;
+  root_asset_id?: number | null;
 }
 
 export interface ScanJob {
@@ -183,5 +184,49 @@ export interface AssetDashboardResponse {
   related_assets: RelatedAssetGroup[];
   tool_summary: DashboardToolSummary[];
   risk: AssetRisk | null;
+  generated_at: string;
+}
+
+// GET /assets/{asset_id}/reputation
+export interface ReputationZone {
+  zone: string;
+  code?: string;
+  query?: string;
+  reason?: string;
+}
+
+export interface ReputationIpEntry {
+  ip: string;
+  asset_id: number;
+  listed_count: number;
+  tor_exit: boolean;
+  abuseipdb_score?: number | null;
+  zones_checked?: number | null;
+  zones_with_errors?: number | null;
+  last_checked: string | null;
+  zones: ReputationZone[];
+  abuseipdb?: {
+    score: number;
+    total_reports?: number | null;
+    distinct_users?: number | null;
+    is_whitelisted?: boolean | null;
+    usage_type?: string | null;
+  };
+}
+
+export interface ReputationZoneGroup {
+  zone: string;
+  count: number;
+  listed_ips: string[];
+}
+
+export interface AssetReputationResponse {
+  root_asset: { id: number; value: string | null; asset_type: string | null };
+  total_ips: number;
+  listed_ips: number;
+  total_zone_listings: number;
+  ips: ReputationIpEntry[];
+  by_zone: ReputationZoneGroup[];
+  unchecked_ips: string[];
   generated_at: string;
 }

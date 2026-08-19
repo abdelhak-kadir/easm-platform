@@ -7,6 +7,7 @@ import { categoryInfo } from "../lib/categories";
 import StatusBadge from "./StatusBadge";
 import TopologyMap from "./TopologyMap";
 import Skeleton from "./Skeleton";
+import DomainReputation from "./DomainReputation";
 
 /* ── Props ─────────────────────────────────────────────────────── */
 
@@ -260,6 +261,11 @@ export default function DiscoveryDashboard({
           </div>
         );
       })}
+
+      {/* ── Reputation (root domains only) ─────────────────────── */}
+      {asset.asset_type === "domain" && (
+        <DomainReputation apiBase={apiBase} asset={asset} refreshKey={refreshKey} onJumpToAsset={onJumpToAsset} />
+      )}
     </div>
   );
 }

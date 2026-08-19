@@ -17,7 +17,7 @@ from app.models import (
     ScanStatus,
     ToolName,
 )
-from app.tools.registry import get_tool_spec, tools_for_asset_type
+from app.tools.registry import DISCOVERY_HOST_TOOLS, get_tool_spec, tools_for_asset_type
 from app.tools.shodan.org_search import (
     ShodanSearchError,
     is_likely_shared_hosting,
@@ -158,6 +158,20 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
             "for discovered-asset acceptance",
         )
 
+    # Optional job_id → root-domain link: the job's owning asset's root
+    # (or the owner itself when it is a DOMAIN) becomes the accepted
+    # assets' root_asset_id, so results group per root domain.  Lenient —
+    # a missing/unknown job just leaves the assets unrooted.
+    root_id: int | None = None
+    if payload.job_id is not None:
+        job = db.get(ScanJob, payload.job_id)
+        if job is not None:
+            owner = db.get(Asset, job.asset_id)
+            if owner is not None:
+                root_id = owner.root_asset_id or (
+                    owner.id if owner.asset_type == AssetType.DOMAIN else None
+                )
+
     from app.tasks import run_tool_scan
     from app.tools.registry import tools_for_asset_type
 
@@ -170,10 +184,18 @@ def accept_discovered_assets(payload: AcceptDiscoveredAssets, db: DBSession):
         )
         is_new = asset is None
         if is_new:
-            asset = Asset(value=value, asset_type=payload.asset_type)
+            asset = Asset(
+                value=value,
+                asset_type=payload.asset_type,
+                root_asset_id=root_id,
+            )
             db.add(asset)
             db.commit()
             db.refresh(asset)
+        elif asset.root_asset_id is None and root_id is not None:
+            # On-the-fly backfill for legacy orphans
+            asset.root_asset_id = root_id
+            db.commit()
 
         queued = []
         if is_new:
@@ -291,6 +313,10 @@ def continue_discovery(run_id: int, db: DBSession):
     integrated = 0
     for a in orphans:
         a.discovery_run_id = run.id
+        # Link to the run's root domain so results group per root domain
+        # (assets accepted outside the wave have no root yet).
+        if a.root_asset_id is None:
+            a.root_asset_id = run.root_asset_id
         # Fix status: assets accepted outside the wave are set to RUNNING
         # by the accept endpoints, but the wave needs them in a terminal
         # state (PENDING for schedule_round, or DONE if already scanned).
@@ -675,24 +701,10 @@ def list_scans_for_asset(asset_id: int, db: DBSession):
     return [_serialize_job(db, j) for j in jobs]
 
 
-# Tools whose raw_data["hosts"] feeds the suggest-discovered acceptance flow.
-_DISCOVERY_TOOLS: frozenset[ToolName] = frozenset(
-    {
-        ToolName.THEHARVESTER,
-        ToolName.SUBFINDER,
-        ToolName.AMASS,
-        ToolName.MERKLEMAP,
-        ToolName.CERTSPOTTER,
-        ToolName.SUBLIST3R,
-        ToolName.DNSDUMPSTER,
-        ToolName.PUBLICWWW,
-        ToolName.CLOUDSCRAPER,
-        ToolName.CSPRECON,
-        ToolName.WAYMORE,
-        ToolName.PASSIVEDNS,
-        ToolName.SHODAN,
-    }
-)
+# Tools whose raw_data["hosts"] feeds the suggest-discovered acceptance
+# flow.  Defined in the registry so the wave orchestrator can reuse the
+# same whitelist for auto-promotion.
+_DISCOVERY_TOOLS: frozenset[ToolName] = DISCOVERY_HOST_TOOLS
 
 
 @router.get("/{job_id}/suggest-discovered")

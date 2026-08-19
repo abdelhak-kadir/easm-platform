@@ -80,6 +80,7 @@ class TestCreateDiscoveryRun:
         run = create_discovery_run(db, 1, max_rounds=3)
 
         assert root.discovery_run_id == run.id
+        assert root.root_asset_id == root.id  # a run's root is its own root domain
         assert root.status == AssetStatus.PENDING  # stays PENDING — schedule_round promotes it
         assert run.max_rounds == 3
         assert run.root_asset_id == 1
@@ -309,7 +310,7 @@ class TestCollectRound:
         spawned.discovery_run_id = None
 
         db = MagicMock()
-        # db.get: run, then asset (for each round asset)
+        # db.get: run, then the run's root asset
         db.get.side_effect = [run, asset]
 
         # Queries (in order):
@@ -326,14 +327,77 @@ class TestCollectRound:
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),
             patch("app.orchestrator._collect_spawned_assets", return_value=[spawned]),
+            patch("app.orchestrator._auto_promote_discovered_hosts", return_value=[]),
             patch("app.orchestrator.schedule_round") as mock_sched,
         ):
             result = collect_round(1)
 
         assert result["status"] == "next_round"
         assert result["new_assets"] == 1
+        assert result["auto_promoted"] == 0
         assert spawned.discovery_run_id == 1
         mock_sched.delay.assert_called_once_with(1)
+
+    def test_promotes_hosts_and_schedules_next_round(self):
+        """Auto-promoted hosts alone (no spawned assets) advance the round."""
+        from app.orchestrator import collect_round
+
+        run = _make_run(current_round_asset_ids=[1], round_number=1, max_rounds=5)
+        asset = _make_asset(1, status=AssetStatus.RUNNING)
+        promoted = _make_asset(9, "a.example.com", AssetType.SUBDOMAIN, AssetStatus.PENDING)
+        promoted.discovery_run_id = 1
+
+        db = MagicMock()
+        db.get.side_effect = [run, asset]
+
+        round_assets_q = _mock_query_chain([asset])
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 0
+        lock_q = _mock_query_chain()
+        lock_q.first.return_value = run
+        db.query.side_effect = [round_assets_q, active_q, lock_q]
+
+        with (
+            patch("app.orchestrator.SessionLocal", return_value=db),
+            patch("app.orchestrator._collect_spawned_assets", return_value=[]),
+            patch("app.orchestrator._auto_promote_discovered_hosts", return_value=[promoted]),
+            patch("app.orchestrator.schedule_round") as mock_sched,
+        ):
+            result = collect_round(1)
+
+        assert result["status"] == "next_round"
+        assert result["new_assets"] == 0
+        assert result["auto_promoted"] == 1
+        mock_sched.delay.assert_called_once_with(1)
+
+    def test_no_promotion_no_spawn_finishes_run(self):
+        """Nothing new discovered → the run completes instead of looping."""
+        from app.orchestrator import collect_round
+
+        run = _make_run(current_round_asset_ids=[1], round_number=1, max_rounds=5)
+        asset = _make_asset(1, status=AssetStatus.RUNNING)
+
+        db = MagicMock()
+        db.get.side_effect = [run, asset]
+
+        round_assets_q = _mock_query_chain([asset])
+        active_q = _mock_query_chain()
+        active_q.count.return_value = 0
+        lock_q = _mock_query_chain()
+        lock_q.first.return_value = run
+        db.query.side_effect = [round_assets_q, active_q, lock_q]
+
+        with (
+            patch("app.orchestrator.SessionLocal", return_value=db),
+            patch("app.orchestrator._collect_spawned_assets", return_value=[]),
+            patch("app.orchestrator._auto_promote_discovered_hosts", return_value=[]),
+            patch("app.orchestrator.schedule_round") as mock_sched,
+        ):
+            result = collect_round(1)
+
+        assert result["status"] == "completed"
+        assert result["final_status"] == "completed"
+        mock_sched.delay.assert_not_called()
 
     def test_completes_run_when_no_spawned_at_max_rounds(self):
         from app.orchestrator import collect_round
@@ -355,6 +419,7 @@ class TestCollectRound:
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),
             patch("app.orchestrator._collect_spawned_assets", return_value=[]),
+            patch("app.orchestrator._auto_promote_discovered_hosts", return_value=[]),
             patch("app.orchestrator.schedule_round") as mock_sched,
         ):
             result = collect_round(1)
@@ -385,6 +450,7 @@ class TestCollectRound:
         with (
             patch("app.orchestrator.SessionLocal", return_value=db),
             patch("app.orchestrator._collect_spawned_assets", return_value=[spawned]),
+            patch("app.orchestrator._auto_promote_discovered_hosts", return_value=[]),
             patch("app.orchestrator.schedule_round") as mock_sched,
         ):
             result = collect_round(1)

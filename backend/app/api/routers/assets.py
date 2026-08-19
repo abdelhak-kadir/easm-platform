@@ -2,11 +2,21 @@ import ipaddress
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import DBSession
 from app.api.schemas import AssetCreate
-from app.models import Asset, AssetType, Finding, ScanJob, ScanResult, ScanStatus, Severity
+from app.models import (
+    Asset,
+    AssetType,
+    Finding,
+    ScanJob,
+    ScanResult,
+    ScanStatus,
+    Severity,
+    ToolName,
+)
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -45,18 +55,24 @@ def create_asset(payload: AssetCreate, db: DBSession):
             "asset_type": existing.asset_type,
             "status": existing.status,
             "discovery_run_id": existing.discovery_run_id,
+            "root_asset_id": existing.root_asset_id,
         }
 
     asset = Asset(value=payload.value, asset_type=asset_type)
     db.add(asset)
     db.commit()
     db.refresh(asset)
+    if asset_type == AssetType.DOMAIN:
+        asset.root_asset_id = asset.id  # a domain is its own root domain
+        db.commit()
+        db.refresh(asset)
     return {
         "id": asset.id,
         "value": asset.value,
         "asset_type": asset.asset_type,
         "status": asset.status,
         "discovery_run_id": asset.discovery_run_id,
+        "root_asset_id": asset.root_asset_id,
     }
 
 
@@ -249,6 +265,18 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
     parent_asset_ids = {j.asset_id for j in parent_jobs}
     related_ids |= parent_asset_ids
 
+    # Root-domain linkage: every asset sharing this asset's root domain
+    # (subdomains, spawned IPs) is related too — groups the whole attack
+    # surface under the domain even when no spawn chain connects them.
+    root_id = asset.root_asset_id or (asset.id if asset.asset_type == AssetType.DOMAIN else None)
+    root_linked_ids: set[int] = set()
+    if root_id is not None:
+        root_linked = (
+            db.query(Asset).filter(Asset.root_asset_id == root_id, Asset.id != asset_id).all()
+        )
+        root_linked_ids = {a.id for a in root_linked}
+        related_ids |= root_linked_ids
+
     # Deduplicate and exclude self
     related_ids.discard(asset_id)
 
@@ -297,7 +325,7 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
         if rel_asset is None:
             continue
         # Determine relation direction
-        is_child = rel_id in child_links
+        is_child = rel_id in child_links or rel_id in root_linked_ids
         is_parent = rel_id in parent_links
         if is_child and is_parent:
             relation = "both"
@@ -321,6 +349,7 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
                     "asset_type": rel_asset.asset_type,
                     "status": rel_asset.status,
                     "discovery_run_id": rel_asset.discovery_run_id,
+                    "root_asset_id": rel_asset.root_asset_id,
                 },
                 "relation": relation,
                 "links": links,
@@ -406,6 +435,7 @@ def get_asset_dashboard(asset_id: int, db: DBSession):
             "asset_type": asset.asset_type,
             "status": asset.status,
             "discovery_run_id": asset.discovery_run_id,
+            "root_asset_id": asset.root_asset_id,
         },
         "scans": [_serialize_job(db, j) for j in own_jobs],
         "related_assets": related_payload,
@@ -426,6 +456,124 @@ def get_asset(asset_id: int, db: DBSession):
         "asset_type": asset.asset_type,
         "status": asset.status,
         "discovery_run_id": asset.discovery_run_id,
+        "root_asset_id": asset.root_asset_id,
+    }
+
+
+# ── reputation (grouped IP blacklist view for a root domain) ───────────
+
+
+def _aggregate_reputation(db: Session, root_id: int) -> dict:
+    """Aggregate IP-blacklist findings across every asset belonging to
+    *root_id* (the root itself + all assets whose ``root_asset_id`` points
+    at it).  Latest completed ip_blacklist result per member only —
+    same latest-version-per-tool pattern as ``_compute_asset_risk``.
+
+    Returns the payload for ``GET /assets/{id}/reputation``: per-IP
+    summaries, listings grouped by RBL zone, and unchecked IPs.
+    """
+    member_ids = [
+        row[0]
+        for row in db.query(Asset.id)
+        .filter(or_(Asset.id == root_id, Asset.root_asset_id == root_id))
+        .all()
+    ]
+    members = {a.id: a for a in db.query(Asset).filter(Asset.id.in_(member_ids)).all()}
+
+    rows = (
+        db.query(ScanResult)
+        .join(ScanJob)
+        .filter(
+            ScanJob.asset_id.in_(member_ids),
+            ScanJob.tool == ToolName.IP_BLACKLIST,
+            ScanJob.status == ScanStatus.COMPLETED,
+        )
+        .order_by(ScanResult.version.desc())
+        .all()
+    )
+    latest_by_asset: dict[int, ScanResult] = {}
+    for r in rows:
+        latest_by_asset.setdefault(r.scan_job.asset_id, r)
+
+    ips: list[dict] = []
+    zone_agg: dict[str, list[str]] = {}
+    listed_ips = 0
+    total_zone_listings = 0
+    unchecked_ips: list[str] = []
+
+    for aid in sorted(member_ids):
+        member = members[aid]
+        result = latest_by_asset.get(aid)
+        if result is None:
+            if member.asset_type == AssetType.IP:
+                unchecked_ips.append(member.value)
+            continue
+
+        summary: dict = {}
+        listings: list[dict] = []
+        abuseipdb: dict | None = None
+        for f in result.findings:
+            if f.finding_type == "ip_reputation":
+                summary = f.data
+            elif f.finding_type == "rbl_listing":
+                listings.append(f.data)
+                zone = f.data.get("zone", "?")
+                zone_agg.setdefault(zone, []).append(member.value)
+            elif f.finding_type == "abuseipdb_report":
+                abuseipdb = f.data
+
+        entry: dict = {
+            "ip": member.value,
+            "asset_id": aid,
+            "listed_count": summary.get("rbl_listed_count", len(listings)),
+            "tor_exit": bool(summary.get("tor_exit")),
+            "abuseipdb_score": summary.get("abuseipdb_score"),
+            "zones_checked": summary.get("zones_checked"),
+            "zones_with_errors": summary.get("zones_with_errors"),
+            "last_checked": result.created_at.isoformat() if result.created_at else None,
+            "zones": listings,
+        }
+        if abuseipdb is not None:
+            entry["abuseipdb"] = abuseipdb
+        if entry["listed_count"] > 0:
+            listed_ips += 1
+        total_zone_listings += len(listings)
+        ips.append(entry)
+
+    by_zone = [
+        {"zone": zone, "count": len(ips_list), "listed_ips": sorted(set(ips_list))}
+        for zone, ips_list in sorted(zone_agg.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    ]
+
+    return {
+        "total_ips": len(member_ids),
+        "listed_ips": listed_ips,
+        "total_zone_listings": total_zone_listings,
+        "ips": ips,
+        "by_zone": by_zone,
+        "unchecked_ips": sorted(set(unchecked_ips)),
+        "generated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@router.get("/{asset_id}/reputation")
+def get_asset_reputation(asset_id: int, db: DBSession):
+    """Grouped IP-blacklist reputation view for an asset's root domain:
+    every member IP's listings, aggregated by RBL zone.  A domain views
+    itself; a subdomain/IP views its root domain."""
+    asset = db.get(Asset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    root_id = asset.root_asset_id if asset.root_asset_id is not None else asset.id
+    root = db.get(Asset, root_id)
+    return {
+        "root_asset": {
+            "id": root.id if root else root_id,
+            "value": root.value if root else None,
+            "asset_type": root.asset_type if root else None,
+        },
+        **_aggregate_reputation(db, root_id),
     }
 
 

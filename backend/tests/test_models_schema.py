@@ -49,6 +49,26 @@ class TestAssetTypeExtended:
         assert AssetType.TECHNOLOGY in all_types
 
 
+class TestAssetRootLinkage:
+    def test_root_asset_id_column_is_nullable_self_fk(self):
+        from sqlalchemy import inspect as sa_inspect
+
+        col = sa_inspect(Asset).columns["root_asset_id"]
+        assert col.nullable is True
+        # Self-referential FK on assets.id
+        assert col.foreign_keys
+        fk = next(iter(col.foreign_keys))
+        assert fk.column.table.name == "assets"
+
+    def test_root_asset_id_index_configured(self):
+        index_names = {ix.name for ix in Asset.__table__.indexes}
+        assert "ix_assets_root_asset" in index_names
+
+    def test_root_asset_id_assignable(self):
+        asset = Asset(value="sub.example.com", asset_type=AssetType.SUBDOMAIN, root_asset_id=5)
+        assert asset.root_asset_id == 5
+
+
 class TestDiscoveryRun:
     def test_discovery_run_column_defaults(self):
         """SQLAlchemy applies defaults at INSERT time, not construction.
@@ -109,3 +129,14 @@ class TestDiscoveryRun:
         assert run.max_rounds == 10
         assert run.status == "completed"
         assert run.current_round_asset_ids == [1, 2, 3]
+
+    def test_discovery_run_auto_promoted_hosts_column(self):
+        """auto_promoted_hosts stores the per-run promotion budget list."""
+        from sqlalchemy import inspect as sa_inspect
+
+        col = sa_inspect(DiscoveryRun).columns["auto_promoted_hosts"]
+        assert col.nullable is True
+
+        run = DiscoveryRun(root_asset_id=1, auto_promoted_hosts=["a.example.com"])
+        assert run.auto_promoted_hosts == ["a.example.com"]
+        assert DiscoveryRun(root_asset_id=1).auto_promoted_hosts is None
